@@ -1,0 +1,648 @@
+<?xml version="1.0"?>
+<!--
+  ~ @package   RadicalForm
+  ~ @version   __DEPLOY_VERSION__
+  ~ @author    Vladimir Eliseev aka Progreccor - https://progreccor.ru
+  ~ @copyright Copyright (c) 2025 Progreccor. All rights reserved.
+  ~ @license   GNU/GPL license: http://www.gnu.org/copyleft/gpl.html
+  ~ @link      https://progreccor.ru
+  -->
+
+<extension type="plugin" version="5.2" method="upgrade" group="system">
+    <name>PLG_RADICALFORM</name>
+    <author>Progreccor</author>
+    <authorEmail>info@hika.su</authorEmail>
+    <authorUrl>https://hika.su</authorUrl>
+    <copyright>Copyright (C) 2023 Progreccor. All rights reserved.</copyright>
+    <license>GNU General Public License version 2 or later;</license>
+    <version>3.1.6-dev</version>
+    <creationDate>2024-04-17</creationDate>
+    <description>PLG_RADICALFORM_DESC</description>
+    <scriptfile>script.php</scriptfile>
+    <namespace path="src">Joomla\Plugin\System\RadicalForm</namespace>
+
+    <files>
+        <folder>services</folder>
+        <folder plugin="radicalform">src</folder>
+        <folder>tmpl</folder>
+    </files>
+
+    <languages folder="language">
+        <language tag="en-GB">en-GB/plg_system_radicalform.ini</language>
+        <language tag="ru-RU">ru-RU/plg_system_radicalform.ini</language>
+        <language tag="en-GB">en-GB/plg_system_radicalform.sys.ini</language>
+        <language tag="ru-RU">ru-RU/plg_system_radicalform.sys.ini</language>
+    </languages>
+
+    <media folder="media" destination="plg_system_radicalform">
+        <folder>js</folder>
+        <folder>css</folder>
+        <folder>images</folder>
+        <filename>joomla.asset.json</filename>
+    </media>
+
+    <updateservers>
+        <server type="extension" priority="1" name="Radical Form">
+            https://hika.su/update/free/plg_radicalform.xml
+        </server>
+    </updateservers>
+
+    <config>
+        <fields name="params" addfieldprefix="Joomla\Plugin\System\RadicalForm\Field">
+            <fieldset name="basic">
+                <field
+                        name="dangerclass"
+                        type="text"
+                        label="PLG_RADICALFORM_DANGER_CLASS"
+                        description="PLG_RADICALFORM_DANGER_CLASS_DESCRIPTION"
+                        required="false"
+                        default="uk-form-danger"
+                        size="10"
+                        class="input-xxlarge"
+                        readonly="false"
+                        disabled="false"
+                        filter="">
+                </field>
+                <field
+                        name="errorfile"
+                        type="text"
+                        label="PLG_RADICALFORM_ERROR_FILE"
+                        description="PLG_RADICALFORM_ERROR_FILE_DESCRIPTION"
+                        required="false"
+                        default="uk-text-danger"
+                        size="10"
+                        class="input-xxlarge"
+                        readonly="false"
+                        disabled="false"
+                        filter="">
+                </field>
+                <field type="spacer" name="myspacer" hr="true"/>
+                <field
+                        name="rfCall_0"
+                        label="PLG_RADICALFORM_RF_CALL_0"
+                        description="PLG_RADICALFORM_RF_CALL_0_DESCRIPTION"
+                        filter="raw"
+                        syntax="php"
+                        editor="codemirror|none"
+                        type="editor"
+                        class="input-xxlarge"
+                />
+                <field
+                        name="rfCall_1"
+                        type="editor"
+                        label="PLG_RADICALFORM_RF_CALL_1"
+                        description="PLG_RADICALFORM_RF_CALL_1_DESCRIPTION"
+                        editor="codemirror|none"
+                        syntax="php"
+                        buttons="false"
+                        filter="raw"
+                />
+                <field
+                        name="rfCall_2"
+                        editor="codemirror|none"
+                        type="editor"
+                        syntax="php"
+                        label="PLG_RADICALFORM_RF_CALL_2"
+                        description="PLG_RADICALFORM_RF_CALL_2_DESCRIPTION"
+                        filter="raw"
+                        default="alert(rfMessage);"
+                />
+                <field
+                        name="rfCall_3"
+                        editor="codemirror|none"
+                        type="editor"
+                        syntax="php"
+                        label="PLG_RADICALFORM_RF_CALL_3"
+                        description="PLG_RADICALFORM_RF_CALL_3_DESCRIPTION"
+                        filter="raw"
+
+                />
+                <field
+                        name="rfCall_9on"
+                        type="radio"
+                        label="PLG_RADICALFORM_RF_CALL_9ON"
+                        description="PLG_RADICALFORM_RF_CALL_9ON_DESCRIPTION"
+                        class="btn-group btn-group-yesno"
+                        default="0"
+                >
+                    <option value="1">JON</option>
+                    <option value="0">JOFF</option>
+                </field>
+                <field
+                        name="rfCall_9"
+                        editor="codemirror|none"
+                        type="editor"
+                        syntax="php"
+                        label="PLG_RADICALFORM_RF_CALL_9"
+                        description="PLG_RADICALFORM_RF_CALL_9_DESCRIPTION"
+                        filter="raw"
+                        default="alert(rfMessage);"
+                        showon="rfCall_9on:1"
+
+                />
+                <field type="spacer" name="myspacer1" hr="true"/>
+                <field
+                        name="emailon"
+                        type="radio"
+                        label="PLG_RADICALFORM_EMAILON_LABEL"
+                        description="PLG_RADICALFORM_EMAILON_DESCRIPTION"
+                        class="btn-group btn-group-yesno"
+                        default="1"
+                >
+                    <option value="1">JON</option>
+                    <option value="0">JOFF</option>
+                </field>
+                <field
+                        name="email"
+                        type="email"
+                        label="PLG_RADICALFORM_EMAIL"
+                        required="false"
+                        size="10"
+                        class="input-xxlarge"
+                        readonly="false"
+                        showon="emailon:1"
+                        disabled="false"/>
+                <field
+                        name="emailcc"
+                        type="email"
+                        label="PLG_RADICALFORM_EMAIL_CC"
+                        required="false"
+                        size="10"
+                        class="input-xxlarge"
+                        readonly="false"
+                        showon="emailon:1"
+                        disabled="false"/>
+                <field
+                        name="emailbcc"
+                        type="email"
+                        label="PLG_RADICALFORM_EMAIL_BCC"
+                        required="false"
+                        size="10"
+                        class="input-xxlarge"
+                        readonly="false"
+                        showon="emailon:1"
+                        disabled="false"/>
+                <field
+                        name="replyto"
+                        type="text"
+                        label="PLG_RADICALFORM_REPLY_TO"
+                        description="PLG_RADICALFORM_REPLY_TO_DESC"
+                        required="false"
+                        size="10"
+                        class="input-xxlarge"
+                        readonly="false"
+                        showon="emailon:1"
+                        default="email"
+                        disabled="false"/>
+                <field name="emailalt" type="subform"
+                       multiple="true"
+                       label="PLG_RADICALFORM_ALTERNATIVEEMAILS_LABEL"
+                       description="PLG_RADICALFORM_ALTERNATIVEEMAILS_DESC"
+                       layout="joomla.form.field.subform.repeatable-table"
+                       showon="emailon:1"
+                >
+                    <form>
+                        <field name="email" type="text" label="Email"/>
+                        <field name="target" type="text" label="Target ID"/>
+                    </form>
+                </field>
+                <field
+                        name="extendedinfo"
+                        type="radio"
+                        label="PLG_RADICALFORM_EXTENDED_INFO"
+                        description="PLG_RADICALFORM_EXTENDED_INFO_DESC"
+                        class="btn-group btn-group-yesno"
+                        default="0"
+                        showon="emailon:1"
+                >
+                    <option value="1">JON</option>
+                    <option value="0">JOFF</option>
+                </field>
+                <field type="spacer" name="myspacer11" hr="true"/>
+                <field
+                        name="rfSubject"
+                        type="text"
+                        label="PLG_RADICALFORM_SUBJECT"
+                        description="PLG_RADICALFORM_WAIT_SUBJECT_DESCRIPTION"
+                        required="false"
+                        default="Обратная связь"
+                        size="10"
+                        class="input-xxlarge"
+                        readonly="false"
+                        disabled="false"
+                        filter="">
+                </field>
+                <field
+                        name="rfWaitMessage"
+                        type="text"
+                        label="PLG_RADICALFORM_WAIT_MESSAGE"
+                        description="PLG_RADICALFORM_WAIT_MESSAGE_DESCRIPTION"
+                        required="false"
+                        default="Ждите..."
+                        size="10"
+                        class="input-xxlarge"
+                        readonly="false"
+                        disabled="false"
+                        filter="raw">
+                </field>
+
+                <field
+                        name="aftersend"
+                        type="textarea"
+                        label="PLG_RADICALFORM_AFTERSEND"
+                        description="PLG_RADICALFORM_AFTERSEND_DESCRIPTION"
+                        required="false"
+                        default="Сообщение было отправлено"
+                        size="10"
+                        class="input-xxlarge"
+                        readonly="false"
+                        disabled="false"
+                        filter="raw">
+                </field>
+                <field
+                        name="glue"
+                        type="text"
+                        label="PLG_RADICALFORM_GLUE"
+                        description="PLG_RADICALFORM_GLUE_DESCRIPTION"
+                        required="false"
+                        default="&lt;br /&gt;"
+                        size="10"
+                        class=""
+                        readonly="false"
+                        disabled="false"
+                        filter="raw">
+                </field>
+                <field
+                        name="insertformid"
+                        type="radio"
+                        label="PLG_RADICALFORM_INSERTFORMID"
+                        description="PLG_RADICALFORM_INSERTFORMID_DESC"
+                        class="btn-group btn-group-yesno"
+                        default="0">
+                    <option value="1">JON</option>
+                    <option value="0">JOFF</option>
+                </field>
+                <field type="spacer" name="myspacer12" hr="true"/>
+                <field
+                        name="keepalive"
+                        type="radio"
+                        label="PLG_RADICALFORM_KEEPALIVE"
+                        description="PLG_RADICALFORM_KEEPALIVE_DESC"
+                        class="btn-group btn-group-yesno"
+                        default="1">
+                    <option value="1">JON</option>
+                    <option value="0">JOFF</option>
+                </field>
+                <field
+                        name="insertip"
+                        type="radio"
+                        label="PLG_RADICALFORM_INSERTIP"
+                        description="PLG_RADICALFORM_INSERTIP_DESC"
+                        class="btn-group btn-group-yesno"
+                        default="0">
+                    <option value="1">JON</option>
+                    <option value="0">JOFF</option>
+                </field>
+                <field type="spacer" name="myspacer13" hr="true"/>
+            </fieldset>
+            <fieldset name="forfiles" label="PLG_RADICALFORM_FILESPARAMS">
+                <field
+                        name="storageind"
+                        type="radicalform_storage"
+                        id="storageindicator"
+                        label=" "
+                        value="PLG_RADICALFORM_TELEGRAMCHECK_LABEL"
+                />
+                <field
+                        name="waitingupload"
+                        type="text"
+                        label="PLG_RADICALFORM_WAITING_FOR_UPLOAD"
+                        description="PLG_RADICALFORM_WAITING_FOR_UPLOAD_DESCRIPTION"
+                        required="false"
+                        default="Ждите..."
+                        size="10"
+                        class="input-xxlarge"
+                        readonly="false"
+                        disabled="false"
+                        filter="raw">
+                </field>
+                <field
+                        name="attachfiles"
+                        type="radio"
+                        label="PLG_RADICALFORM_ATTACHFILES_LABEL"
+                        description="PLG_RADICALFORM_ATTACHFILES_DESCRIPTION"
+                        class="btn-group btn-group-yesno"
+                        default="0"
+                >
+                    <option value="1">JYES</option>
+                    <option value="0">JNO</option>
+                </field>
+                <field
+                        name="maxfile"
+                        type="text"
+                        label="PLG_RADICALFORM_MAXFILE"
+                        description="PLG_RADICALFORM_MAXFILE_DESCRIPTION"
+                        required="false"
+                        default="20"
+                        size="10"
+                        class="input-small"
+                        readonly="false"
+                        disabled="false"
+                        showon="attachfiles:1"
+                        filter="">
+                </field>
+                <field
+                        name="maxstorage"
+                        type="text"
+                        label="PLG_RADICALFORM_MAXSTORAGE"
+                        description="PLG_RADICALFORM_MAXSTORAGE_DESCRIPTION"
+                        required="false"
+                        default="1000"
+                        size="10"
+                        class="input-small"
+                        readonly="false"
+                        disabled="false"
+                        filter="">
+                </field>
+                <field
+                        name="maxtime"
+                        type="text"
+                        label="PLG_RADICALFORM_MAXTIME"
+                        description="PLG_RADICALFORM_MAXSTIME_DESCRIPTION"
+                        required="false"
+                        default="30"
+                        size="10"
+                        class="input-small"
+                        readonly="false"
+                        disabled="false"
+                        filter="">
+                </field>
+                <field
+                        name="uploadstorage"
+                        type="text"
+                        label="PLG_RADICALFORM_UPLOADSTORAGE"
+                        description="PLG_RADICALFORM_UPLOADSTORAGE_DESCRIPTION"
+                        required="false"
+                        class="input-xxlarge"
+                        readonly="false"
+                        disabled="false"
+                        filter="">
+                </field>
+                <field
+                        name="delimiter"
+                        type="text"
+                        label="PLG_RADICALFORM_DELIMITER"
+                        description="PLG_RADICALFORM_DELIMITER_DESCRIPTION"
+                        required="false"
+                        default="&lt;br /&gt;"
+                        size="10"
+                        class=""
+                        readonly="false"
+                        disabled="false"
+                        filter="raw">
+                </field>
+                <field
+                        name="downloadpath"
+                        type="text"
+                        label="PLG_RADICALFORM_DOWNLOADPATH"
+                        description="PLG_RADICALFORM_DOWNLOADPATH_DESCRIPTION"
+                        required="false"
+                        size="20"
+                        class="input-small"
+                        readonly="false"
+                        disabled="false"
+                        filter="raw">
+                </field>
+
+
+                <field
+                        name="buttondeletecolor"
+                        type="color"
+                        label="PLG_RADICALFORM_BUTTONDELETECOLOR"
+                        description="PLG_RADICALFORM_BUTTONDELETECOLOR_DESCRIPTION"
+                        required="false"
+                        default="#fbfbfb"
+                        readonly="false"
+                        disabled="false"
+                        filter="raw">
+                </field>
+                <field
+                        name="buttondeletecolorbackground"
+                        type="color"
+                        label="PLG_RADICALFORM_BUTTONDELETECOLORBACKGROUND"
+                        description="PLG_RADICALFORM_BUTTONDELETECOLORBACKGROUND_DESCRIPTION"
+                        required="false"
+                        default="#f44336"
+                        readonly="false"
+                        disabled="false"
+                        filter="raw">
+                </field>
+            </fieldset>
+            <fieldset name="advanced" label="PLG_RADICALFORM_ADVANCEDPARAMS">
+                <field
+                        name="telegram"
+                        type="radio"
+                        label="PLG_RADICALFORM_TELEGRAM_LABEL"
+                        description="PLG_RADICALFORM_TELEGRAM_DESCRIPTION"
+                        class="btn-group btn-group-yesno"
+                        default="0"
+                >
+                    <option value="1">JON</option>
+                    <option value="0">JOFF</option>
+                </field>
+
+                <field
+                        name="telegramtoken"
+                        type="textarea"
+                        label="PLG_RADICALFORM_TELEGRAM_TOKEN"
+                        description="PLG_RADICALFORM_TELEGRAM_TOKEN_DESCRIPTION"
+                        required="false"
+                        default=""
+                        size="20"
+                        class="input-xxlarge"
+                        readonly="false"
+                        disabled="false"
+                        showon="telegram:1"
+                        filter="raw">
+                </field>
+                <field
+                        name="proxy"
+                        type="radio"
+                        label="PLG_RADICALFORM_PROXY_LABEL"
+                        description="PLG_RADICALFORM_PROXY_DESCRIPTION"
+                        class="btn-group btn-group-yesno"
+                        default="0"
+                        showon="telegram:1"
+                >
+                    <option value="1">JON</option>
+                    <option value="0">JOFF</option>
+                </field>
+                <field
+                        name="proxylogin"
+                        type="text"
+                        label="PLG_RADICALFORM_PROXYLOGIN_LABEL"
+                        description="PLG_RADICALFORM_PROXYLOGIN_DESCRIPTION"
+                        required="false"
+                        default=""
+                        class="input-xlarge"
+                        readonly="false"
+                        disabled="false"
+                        showon="telegram:1[AND]proxy:1"
+                        filter="">
+                </field>
+                <field name="proxypassword"
+                       type="password"
+                       default=""
+                       label="PLG_RADICALFORM_PROXYPASSWORD_LABEL"
+                       description="PLG_RADICALFORM_PROXYPASSWORD_DESCRIPTION"
+                       class="input-xlarge"
+                       showon="telegram:1[AND]proxy:1"
+                />
+                <field name="proxyaddress"
+                       type="text"
+                       default=""
+                       label="PLG_RADICALFORM_PROXYADDRESS_LABEL"
+                       description="PLG_RADICALFORM_PROXYADDRESS_DESCRIPTION"
+                       class="input-xlarge"
+                       showon="telegram:1[AND]proxy:1"
+                />
+                <field name="proxyport"
+                       type="text"
+                       default="1080"
+                       label="PLG_RADICALFORM_PROXYPORT_LABEL"
+                       description="PLG_RADICALFORM_PROXYPORT_DESCRIPTION"
+                       class="input-small"
+                       showon="telegram:1[AND]proxy:1"
+                />
+
+                <field name="chatids" type="subform"
+                       multiple="true"
+                       label="PLG_RADICALFORM_TELEGRAMCHATIDCHOOSE_LABEL"
+                       description="PLG_RADICALFORM_TELEGRAMCHATIDCHOOSE_DESC"
+                       layout="joomla.form.field.subform.repeatable-table"
+                       showon="telegram:1"
+                       class="rf-telegram-chatid"
+                >
+                    <form>
+                        <field name="chat_id" type="text" label="Chat_id"/>
+                        <field name="username" type="text" label="Username"/>
+                        <field name="target" type="text" label="Target ID"/>
+                    </form>
+                </field>
+
+                <field
+                        name="checktelegram"
+                        type="radicalform_button"
+                        id="radicalformcheck"
+                        label=" "
+                        showon="telegram:1"
+                        value="PLG_RADICALFORM_TELEGRAMCHECK_LABEL"
+                />
+
+
+                <field
+                        name="jivosite"
+                        type="radio"
+                        label="PLG_RADICALFORM_JIVOSITE_LABEL"
+                        description="PLG_RADICALFORM_JIVOSITE_DESCRIPTION"
+                        class="btn-group btn-group-yesno"
+                        default="0"
+                >
+                    <option value="1">JON</option>
+                    <option value="0">JOFF</option>
+                </field>
+                <field
+                        name="verbox"
+                        type="radio"
+                        label="PLG_RADICALFORM_VERBOX_LABEL"
+                        description="PLG_RADICALFORM_VERBOX_DESCRIPTION"
+                        class="btn-group btn-group-yesno"
+                        default="0"
+                >
+                    <option value="1">JON</option>
+                    <option value="0">JOFF</option>
+                </field>
+                <field
+                        name="customcodeon"
+                        type="radio"
+                        label="PLG_RADICALFORM_CUSTOMCODEON_LABEL"
+                        description="PLG_RADICALFORM_CUSTOMCODEON_DESCRIPTION"
+                        class="btn-group btn-group-yesno"
+                        default="0"
+                >
+                    <option value="1">JON</option>
+                    <option value="0">JOFF</option>
+                </field>
+                <field name="customcodes" type="subform"
+                       multiple="true"
+                       label="PLG_RADICALFORM_CUSTOMCODE_LABEL"
+                       description="PLG_RADICALFORM_CUSTOMCODE_DESC"
+                       layout="joomla.form.field.subform.repeatable-table"
+                       showon="customcodeon:1"
+                >
+                    <form>
+                        <field name="layout" type="text" label="Layout"/>
+                        <field name="description" type="text" label="Description"/>
+                        <field name="target" type="text" label="Target ID"/>
+                    </form>
+                </field>
+            </fieldset>
+            <fieldset name="list" label="PLG_RADICALFORM_HISTORY">
+                <field
+                        name="maxlogfile"
+                        type="text"
+                        label="PLG_RADICALFORM_MAXLOGFILE"
+                        description="PLG_RADICALFORM_MAXLOGFILE_DESC"
+                        required="false"
+                        size="10"
+                        class=""
+                        default="500000"
+                        readonly="false"
+                        disabled="false"/>
+
+                <field
+                        name="hiddeninfo"
+                        type="radio"
+                        label="PLG_RADICALFORM_HIDDENINFO"
+                        description="PLG_RADICALFORM_HIDDENINFO_DESCRIPTION"
+                        class="btn-group btn-group-yesno"
+                        default="0"
+                >
+                    <option value="1">JON</option>
+                    <option value="0">JOFF</option>
+                </field>
+                <field
+                        name="showtarget"
+                        type="radio"
+                        label="PLG_RADICALFORM_SHOWTARGET"
+                        description="PLG_RADICALFORM_SHOWTARGET_DESCRIPTION"
+                        class="btn-group btn-group-yesno"
+                        default="0"
+                >
+                    <option value="1">JON</option>
+                    <option value="0">JOFF</option>
+                </field>
+                <field
+                        name="showformid"
+                        type="radio"
+                        label="PLG_RADICALFORM_SHOWFORMID"
+                        description="PLG_RADICALFORM_SHOWFORMID_DESCRIPTION"
+                        class="btn-group btn-group-yesno"
+                        default="0"
+                >
+                    <option value="1">JON</option>
+                    <option value="0">JOFF</option>
+                </field>
+                <field name="note22" type="note" class="alert alert-info input-xxlarge hidden" close="true"
+                       label="PLG_RADICALFORM_SHOWTARGET_DONTFORGET"
+                       description="PLG_RADICALFORM_SHOWTARGET_DONTFORGET_DESCRIPTION"/>
+                <field type="spacer" name="myspacer3" hr="true"/>
+                <field
+                        name="historytable"
+                        type="radicalform_history"
+                        label="PLG_RADICALFORM_HISTORY"
+                />
+            </fieldset>
+        </fields>
+    </config>
+</extension>

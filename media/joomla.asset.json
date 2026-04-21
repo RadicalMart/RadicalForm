@@ -1,0 +1,32 @@
+{
+    "$schema": "https://developer.joomla.org/schemas/json-schema/web_assets.json",
+    "name": "plg_system_radicalform",
+    "version": "__DEPLOY_VERSION__",
+    "description": "RadicalForm system plugin",
+    "license": "GPL-2.0-or-later",
+    "assets": [
+        {
+            "name": "plg_system_radicalform.config",
+            "type": "style",
+            "uri": "plg_system_radicalform/adminscript.css"
+        },
+        {
+            "name": "plg_system_radicalform.config",
+            "type": "script",
+            "uri": "plg_system_radicalform/adminscript.js",
+            "attributes": {
+                "defer": true,
+                "type": "module"
+            },
+            "version": "auto"
+        },
+        {
+            "name": "plg_system_radicalform.config",
+            "type": "preset",
+            "dependencies": [
+                "plg_system_radicalform.config#style",
+                "plg_system_radicalform.config#script"
+            ]
+        }
+    ]
+}
