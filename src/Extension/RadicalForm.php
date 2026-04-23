@@ -1440,17 +1440,17 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 		preg_match_all($regex, $subject, $matches, PREG_SET_ORDER);
 
 		// No matches, skip this
-		if ($matches)
-		{
-			foreach ($matches as $match)
+			if ($matches)
 			{
-				if (isset($input[$match[1]]))
+				foreach ($matches as $match)
 				{
-					$set = $input[$match[1]];
-					if (is_array($set))
+					if (isset($subjectInput[$match[1]]))
 					{
-						$set = implode(", ", $set);
-					}
+						$set = $subjectInput[$match[1]];
+						if (is_array($set))
+						{
+							$set = implode(", ", $set);
+						}
 					$subject = preg_replace("|$match[0]|", $set, $subject, 1);
 				}
 			}
