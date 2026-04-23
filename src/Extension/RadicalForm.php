@@ -276,6 +276,318 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 		return $input;
 	}
 
+	private function getAntiSpamMessage()
+	{
+		$message = trim((string) $this->params->get('antispam_message', ''));
+
+		if ($message === '')
+		{
+			$message = 'PLG_RADICALFORM_ANTISPAM_BLOCKED';
+		}
+
+		return Text::_($message);
+	}
+
+	private function splitAntiSpamLines($text)
+	{
+		$lines = preg_split("/\r\n|\n|\r/", (string) $text);
+
+		if (!is_array($lines))
+		{
+			return [];
+		}
+
+		return $lines;
+	}
+
+	private function normalizeAntiSpamValue($value)
+	{
+		if (is_array($value))
+		{
+			$value = implode(', ', $value);
+		}
+
+		$value = trim(strip_tags((string) $value));
+
+		return preg_replace('/\s+/u', ' ', $value);
+	}
+
+	private function buildAntiSpamPayload(array $input)
+	{
+		$payload = [];
+
+		foreach ($this->clearInput($input) as $key => $value)
+		{
+			$normalized = $this->normalizeAntiSpamValue($value);
+
+			if ($normalized !== '')
+			{
+				$payload[$key] = $normalized;
+			}
+		}
+
+		return $payload;
+	}
+
+	private function containsMatch($haystack, $needle)
+	{
+		if (function_exists('mb_stripos'))
+		{
+			return mb_stripos($haystack, $needle, 0, 'UTF-8') !== false;
+		}
+
+		return stripos($haystack, $needle) !== false;
+	}
+
+	private function isValidIpv4($ip)
+	{
+		return filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) !== false;
+	}
+
+	private function ipv4ToBits($ip)
+	{
+		$packed = @inet_pton($ip);
+
+		if ($packed === false || strlen($packed) !== 4)
+		{
+			return false;
+		}
+
+		$bits = '';
+
+		for ($i = 0; $i < 4; $i++)
+		{
+			$bits .= str_pad(decbin(ord($packed[$i])), 8, '0', STR_PAD_LEFT);
+		}
+
+		return $bits;
+	}
+
+	private function isIpInIpv4Cidr($ip, $cidr)
+	{
+		$parts = explode('/', $cidr, 2);
+
+		if (count($parts) !== 2)
+		{
+			return false;
+		}
+
+		$network = trim($parts[0]);
+		$prefix  = trim($parts[1]);
+
+		if (!$this->isValidIpv4($ip) || !$this->isValidIpv4($network) || !is_numeric($prefix))
+		{
+			return false;
+		}
+
+		$prefix = (int) $prefix;
+
+		if ($prefix < 0 || $prefix > 32)
+		{
+			return false;
+		}
+
+		$ipBits      = $this->ipv4ToBits($ip);
+		$networkBits = $this->ipv4ToBits($network);
+
+		if ($ipBits === false || $networkBits === false)
+		{
+			return false;
+		}
+
+		return substr($ipBits, 0, $prefix) === substr($networkBits, 0, $prefix);
+	}
+
+	private function isBlacklistedIp($ip, $blacklist)
+	{
+		if (!$this->isValidIpv4($ip))
+		{
+			return false;
+		}
+
+		foreach ($this->splitAntiSpamLines($blacklist) as $line)
+		{
+			$line = trim($line);
+
+			if ($line === '' || strpos($line, '#') === 0)
+			{
+				continue;
+			}
+
+			if (strpos($line, '/') !== false)
+			{
+				if ($this->isIpInIpv4Cidr($ip, $line))
+				{
+					return true;
+				}
+
+				continue;
+			}
+
+			if ($ip === $line)
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	private function getContentRuleFields($fields)
+	{
+		$fields = trim((string) $fields);
+
+		if ($fields === '' || $fields === '*')
+		{
+			return [];
+		}
+
+		$result = [];
+
+		foreach (explode(',', $fields) as $field)
+		{
+			$field = trim($field);
+
+			if ($field !== '')
+			{
+				$result[] = $field;
+			}
+		}
+
+		return $result;
+	}
+
+	private function matchesContentRule(array $payload, array $rule)
+	{
+		$pattern = isset($rule['pattern']) ? trim((string) $rule['pattern']) : '';
+		$mode    = isset($rule['mode']) ? trim((string) $rule['mode']) : 'contains';
+		$fields  = isset($rule['fields']) ? $this->getContentRuleFields($rule['fields']) : [];
+
+		if ($pattern === '')
+		{
+			return false;
+		}
+
+		foreach ($payload as $fieldName => $fieldValue)
+		{
+			if (!empty($fields) && !in_array($fieldName, $fields, true))
+			{
+				continue;
+			}
+
+			if ($mode === 'regex')
+			{
+				$match = @preg_match($pattern, $fieldValue);
+
+				if ($match === 1)
+				{
+					return true;
+				}
+
+				continue;
+			}
+
+			if ($this->containsMatch($fieldValue, $pattern))
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	private function checkAntiSpam(array $input)
+	{
+		$durationRanges = trim((string) $this->params->get('duration_range', ''));
+
+		if ($durationRanges !== '')
+		{
+			if (!isset($input['rf-duration']) || !is_numeric($input['rf-duration']))
+			{
+				return 'duration';
+			}
+
+			$duration = (float) $input['rf-duration'];
+
+			foreach (explode(',', $durationRanges) as $range)
+			{
+				$range = trim($range);
+
+				if ($range === '')
+				{
+					continue;
+				}
+
+				if (!preg_match('/^\s*(-?\d+(?:\.\d+)?)\s*-\s*(-?\d+(?:\.\d+)?)\s*$/', $range, $matches))
+				{
+					continue;
+				}
+
+				$min = (float) $matches[1];
+				$max = (float) $matches[2];
+
+				if ($min > $max)
+				{
+					$temp = $min;
+					$min  = $max;
+					$max  = $temp;
+				}
+
+				if ($duration >= $min && $duration <= $max)
+				{
+					return 'duration';
+				}
+			}
+		}
+
+		$ipBlacklist = trim((string) $this->params->get('ip_blacklist', ''));
+
+		if ($ipBlacklist !== '')
+		{
+			$ip = trim((string) $this->getApplication()->getInput()->server->get('REMOTE_ADDR', ''));
+
+			if ($this->isBlacklistedIp($ip, $ipBlacklist))
+			{
+				return 'ip';
+			}
+		}
+
+		$contentRules = (array) $this->params->get('content_rules');
+
+		if (!empty($contentRules))
+		{
+			$payload = $this->buildAntiSpamPayload($input);
+
+			foreach ($contentRules as $rule)
+			{
+				$rule = (array) $rule;
+
+				if ($this->matchesContentRule($payload, $rule))
+				{
+					return 'content';
+				}
+			}
+		}
+
+		return false;
+	}
+
+	private function logAntiSpamBlock(array $input, $latestNumber, $reason)
+	{
+		$entry                   = $input;
+		$entry['rfLatestNumber'] = $latestNumber;
+		$entry['rfAntiSpam']     = $reason;
+
+		unset($entry['uniq']);
+		unset($entry[Session::getFormToken()]);
+
+		$entry = array_filter($entry, function ($value) {
+			return $value !== '';
+		});
+
+		Log::add(json_encode($entry), Log::WARNING, 'plg_system_radicalform');
+	}
+
 
 	/**
 	 * Listener for the `onAfterRender` event.
@@ -1070,20 +1382,16 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 			}
 		}
 
-		if (isset($input['uniq']))
+		if (!isset($input['uniq']))
 		{
-			$uniq = (int) $input['uniq'];
+			$this->setResponse(['error' => Text::_('PLG_RADICALFORM_INVALID_TOKEN')]);
 		}
-		else
-		{
-			$output["error"] = Text::_('PLG_RADICALFORM_INVALID_TOKEN');
 
-			$this->setResponse($output);
-		}
+		$uniq = (int) $input['uniq'];
 
 		if (isset($get['file']) && $get['file'] == 1)
 		{
-			// здесь нам передали файл. что же, будем обрабатывать
+			// Здесь нам передали файл. Что же, будем обрабатывать
 			$this->setResponse($this->processUploadedFiles($files, $uniq));
 		}
 
@@ -1095,6 +1403,15 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 			$this->setResponse(Text::_('PLG_RADICALFORM_INVALID_TOKEN'));
 		};
 
+		$antiSpamReason = $this->checkAntiSpam($input);
+
+		if ($antiSpamReason !== false)
+		{
+			$this->logAntiSpamBlock($input, $latestNumber, $antiSpamReason);
+
+			$this->setResponse($this->getAntiSpamMessage());
+		}
+
 		$mailer = Factory::getContainer()->get(MailerFactoryInterface::class)->createMailer();
 		$sender = array(
 			$this->getApplication()->get('mailfrom'),
@@ -1102,21 +1419,6 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 		);
 
 		$mailer->setSender($sender);
-
-		// вызов внешнего плагина
-		PluginHelper::importPlugin('radicalform');
-		$params = $this->params;
-		$params->set('uploaddir', $this->params->get('uploadstorage') . '/rf-' . $uniq);
-		$params->set('rfLatestNumber', $latestNumber);
-
-		try
-		{
-			$this->getApplication()->triggerEvent('onBeforeSendRadicalForm', array($this->clearInput($input), &$input, $params));
-		}
-		catch (\Throwable $e)
-		{
-			// TODO лог
-		}
 
 		if (isset($input["rfSubject"]) && (!empty($input["rfSubject"])))
 		{
@@ -1127,6 +1429,9 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 		{
 			$subject = $this->params->get('rfSubject');
 		}
+
+		$subjectInput = $input;
+		$subjectInput['rfLatestNumber'] = $latestNumber;
 
 		// Expression to search for (positions)
 		$regex = '/{(.*?)}/i';
@@ -1152,6 +1457,10 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 		}
 
 		$mailer->setSubject($subject);
+
+		$params = $this->params;
+		$params->set('uploaddir', $this->params->get('uploadstorage') . '/rf-' . $uniq);
+		$params->set('rfLatestNumber', $latestNumber);
 
 		// формируем поле загруженных файлов
 		$url          = ((!empty($_SERVER['HTTPS'])) ? 'https' : 'http') . '://' . $_SERVER['HTTP_HOST'];
@@ -1187,6 +1496,18 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 				}
 
 			}
+		}
+
+		// вызов внешнего плагина
+		PluginHelper::importPlugin('radicalform');
+
+		try
+		{
+			$this->getApplication()->triggerEvent('onBeforeSendRadicalForm', array($this->clearInput($input), &$input, $params));
+		}
+		catch (\Throwable $e)
+		{
+			// TODO лог
 		}
 
 		unset($input["uniq"]);
@@ -1448,14 +1769,15 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 		{
 			$this->setResponse(['ok', $textOutput]);
 		}
+
+		return false;
 	}
 
 	/**
-	 * Set response method.
+	 * Set a response method.
 	 *
 	 * @param   mixed  $data  Returned data
 	 *
-	 * @throws \Exception
 	 * @since  __DEPLOY_VERSION__
 	 */
 	protected function setResponse($data)

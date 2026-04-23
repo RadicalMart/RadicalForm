@@ -43,10 +43,19 @@ class StorageField extends FormField
 		foreach ($dir as $file)
 		{
 			if (($file != '.') && ($file != '..'))
-				if (is_dir($path . '/' . $file))
-					$fileSize += $this->getDirectorySize($path . '/' . $file);
+			{
+				$fullPath = $path . '/' . $file;
+
+				if (is_link($fullPath))
+				{
+					continue;
+				}
+
+				if (is_dir($fullPath))
+					$fileSize += $this->getDirectorySize($fullPath);
 				else
-					$fileSize += filesize($path . '/' . $file);
+					$fileSize += filesize($fullPath);
+			}
 		}
 
 		return $fileSize;

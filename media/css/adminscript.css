@@ -1,26 +1,14 @@
-/*
- * @package   RadicalForm
- * @version   __DEPLOY_VERSION__
- * @author    Vladimir Eliseev aka Progreccor - https://progreccor.ru
- * @copyright Copyright (c) 2025 Progreccor. All rights reserved.
- * @license   GNU/GPL license: http://www.gnu.org/copyleft/gpl.html
- * @link      https://progreccor.ru
- */
-
 #general .adminlist.table {
     max-width: 760px;
 }
-
 #general .adminlist.table th:nth-child(2),
 #attrib-advanced .adminlist.table th:first-child,
 #attrib-advanced .adminlist.table th:nth-child(3) {
     width: 16%;
 }
-
 #attrib-list .adminlist.table td a {
     text-decoration: underline;
 }
-
 #attrib-advanced .adminlist.table {
     max-width: 960px;
 }
@@ -28,7 +16,6 @@
 #general .CodeMirror.CodeMirror-fullscreen {
     width: 100%;
 }
-
 #general .CodeMirror {
     height: 100px;
     min-height: auto;

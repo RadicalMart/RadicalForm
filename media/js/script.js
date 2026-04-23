@@ -1,14 +1,5 @@
-/*
- * @package   RadicalForm
- * @version   __DEPLOY_VERSION__
- * @author    Vladimir Eliseev aka Progreccor - https://progreccor.ru
- * @copyright Copyright (c) 2025 Progreccor. All rights reserved.
- * @license   GNU/GPL license: http://www.gnu.org/copyleft/gpl.html
- * @link      https://progreccor.ru
- */
-
 function ready(fn) {
-    if (document.readyState != 'loading') {
+    if (document.readyState !== 'loading'){
         fn();
     } else {
         document.addEventListener('DOMContentLoaded', fn);
@@ -33,13 +24,13 @@ RadicalFormClass = function () {
     this.error_file_classes = RadicalForm.ErrorFile.trim().split(/\s+/);
 
     if (RadicalForm.KeepAlive != 0) {
-        window.setInterval(function () {
+        window.setInterval(function() {
 
             var request = new XMLHttpRequest();
 
             request.open('POST', RadicalForm.Base + '/index.php?option=com_ajax&format=json', true);
 
-            request.onload = function () {
+            request.onload = function() {
 
             };
 
@@ -52,29 +43,30 @@ RadicalFormClass = function () {
      * Init for DOM element
      * @param container
      */
-    this.init = function (container) {
+    this.init = function(container) {
 
-        if (typeof container === 'string') {
+        if(typeof container === 'string') {
             container = document.querySelector(container);
         } else {
-            if (container === null || container === undefined) {
+            if(container === null || container === undefined) {
                 container = document.querySelector('body')
             }
         }
 
         //here we initialize all forms without .rf-form class and those don't have .rf-form inside - we added this class so they have it
         //only forms with this class is used in our work
-        var allForms = Array.from(container.querySelectorAll('form:not(.rf-form)')),
+        var allForms= Array.from(container.querySelectorAll('form:not(.rf-form)')),
             filteredForms;
-        filteredForms = allForms.filter(function (el) {
-            if (el.querySelector(".rf-form")) {
+        filteredForms = allForms.filter(function(el) {
+            if(el.querySelector(".rf-form"))
+            {
                 // we don't add rf-form class to forms with our form inside
                 return false;
             }
             return (el.querySelector(".rf-button-send"));
         });
 
-        filteredForms.forEach(function (el) {
+        filteredForms.forEach(function (el){
             el.classList.add('rf-form');
         });
 
@@ -83,12 +75,12 @@ RadicalFormClass = function () {
         AjaxFormDataforToken.append('gettoken', '1');
         request1.open('POST', RadicalForm.Base + '/index.php?option=com_ajax&plugin=radicalform&format=json&group=system', true);
 
-        request1.onload = function () {
+        request1.onload = function() {
             if (this.status >= 200 && this.status < 400) {
                 // Success!
                 var data = JSON.parse(this.response);
                 [].forEach.call(container.querySelectorAll('.rf-form .rf-button-send'), function (el) {
-                    el.insertAdjacentHTML('afterend', '<input type="hidden" name="' + data.data[0] + '" value="1" />');
+                    el.insertAdjacentHTML('afterend', '<input type="hidden" name="'+data.data[0]+'" value="1" />');
                 });
             }
 
@@ -108,15 +100,15 @@ RadicalFormClass = function () {
         });
 
         this.on(container, ".rf-form .rf-button-delete", 'click', function (target, e) {
-            // click on delete button for uploaded files
+        // click on delete button for uploaded files
             var request = new XMLHttpRequest();
 
             var filename = selfClass.closest(target.target, "div").querySelector("span").textContent,
-                catalog = selfClass.closest(target.target, "div").dataset.name;
+                catalog =  selfClass.closest(target.target, "div").dataset.name;
 
-            request.open('POST', RadicalForm.Base + '/index.php?option=com_ajax&plugin=radicalform&format=json&group=system&deletefile=' + filename + '&uniq=' + selfClass.uniq + '&catalog=' + catalog, true);
+            request.open('POST', RadicalForm.Base + '/index.php?option=com_ajax&plugin=radicalform&format=json&group=system&deletefile=' + filename + '&uniq='+selfClass.uniq + '&catalog='+ catalog, true);
 
-            request.onload = function () {
+            request.onload = function() {
                 if (this.status >= 200 && this.status < 400) {
                     // Success!
                     var data = JSON.parse(this.response);
@@ -160,11 +152,11 @@ RadicalFormClass = function () {
      * Send form
      * @param e
      */
-    this.formSend = function (e) {
+    this.formSend = function(e) {
         var needReturn = false,
             field,
             form = selfClass.closest(this, '.rf-form');
-        if (form === null) {
+        if (form === null ) {
             alert("There is no parent with css class .rf-form for your send button!\r\nSee possible explanation in console log.");
             console.log("If you use uikit 3 - it moves the modal window to the end of the document the moment it is opened.\n" +
                 "\n" +
@@ -175,19 +167,20 @@ RadicalFormClass = function () {
             return;
         }
 
-        var numberOfInputsWithNames = form.querySelectorAll('input[name], select[name], textarea[name]').length - form.querySelectorAll('input[type="file"]').length;
+        var numberOfInputsWithNames=form.querySelectorAll('input[name], select[name], textarea[name]').length - form.querySelectorAll('input[type="file"]').length;
         if (numberOfInputsWithNames < 2) {
             alert("There is no input tags in your form with 'name' attribute!\r\n Please add 'name' attribute to your input tags!");
             needReturn = true;
         }
-        if (form.querySelectorAll("input[name]").length !== form.querySelectorAll('input').length) {
+        if(form.querySelectorAll("input[name]").length !== form.querySelectorAll('input').length)
+        {
             console.log('RadicalForm: there are inputs in your form without name! Please check ');
         }
 
 
         RadicalForm.FormFields = [];
         [].forEach.call(form.querySelectorAll("[name]"), function (el) {
-            // remove danger classes so they can animated later
+           // remove danger classes so they can animated later
             selfClass.danger_classes.forEach(function (item) {
                 el.classList.remove(item);
             });
@@ -221,7 +214,9 @@ RadicalFormClass = function () {
                     } catch (e) {
                         console.error('Radical Form JS Code: ', e);
                     }
-                } else {
+                }
+                else
+                {
                     console.error("Function rfCall_0 doesn't set at RadicalForm plugin settings");
                 }
             }
@@ -238,13 +233,13 @@ RadicalFormClass = function () {
 
             var AjaxFormData = new FormData(); //form data without the file inputs
             AjaxFormData.append('rfUserAgent', window.navigator.userAgent);
-            if (form.getAttribute('id') !== null) {
+            if(form.getAttribute('id') !== null) {
                 AjaxFormData.append('rfFormID', form.getAttribute('id'));
             }
             AjaxFormData.append('uniq', selfClass.uniq);
             AjaxFormData.append('url', window.location.href);
             AjaxFormData.append('rf-time', selfClass.showTime());
-            AjaxFormData.append('rf-duration', (performance.now() / 1000).toFixed(2));
+            AjaxFormData.append('rf-duration', (performance.now()/1000).toFixed(2));
             AjaxFormData.append('reffer', document.referrer);
             AjaxFormData.append('resolution', screen.width + 'x' + screen.height);
             AjaxFormData.append('pagetitle', document.title.replace(/&/g, "&amp;")
@@ -261,7 +256,7 @@ RadicalFormClass = function () {
 
             for (var i = 0; i < elements.length; i++) {
                 field = elements[i];
-                switch (field.type) {
+                switch (field.type){
                     case "select-one":
                     case "select-multiple":
 
@@ -273,7 +268,7 @@ RadicalFormClass = function () {
                                     if (option.hasAttribute) {
                                         optValue = (option.hasAttribute("value") ? option.value : option.text);
                                     } else {
-                                        optValue = (option.attributes["value"].specified ? option.value : option.text);
+                                        optValue = ( option.attributes["value"].specified ? option.value: option.text);
                                     }
                                     AjaxFormData.append(field.name, optValue);
                                 }
@@ -289,7 +284,7 @@ RadicalFormClass = function () {
                         break;
                     case "radio":
                     case "checkbox":
-                        if (!field.checked) {
+                        if(!field.checked) {
                             break;
                         }
                     default:
@@ -333,17 +328,17 @@ RadicalFormClass = function () {
                 }
             }
 
-            var request = new XMLHttpRequest(),
+            var  request = new XMLHttpRequest(),
                 requestUrl = RadicalForm.Base + "/index.php?option=com_ajax&plugin=radicalform&group=system&format=json";
             request.open('POST', requestUrl);
             request.send(AjaxFormData);
             request.onreadystatechange = function () {
                 var rfCall, message;
                 if (this.readyState === 4 && this.status === 200) {
-                    buttonPressed.innerHTML = prevousButtonText;
-                    buttonPressed.disabled = false;
+                    buttonPressed.innerHTML=prevousButtonText;
+                    buttonPressed.disabled=false;
                     if (form.querySelector(".rf-filenames-list")) {
-                        form.querySelector(".rf-filenames-list").innerHTML = "";
+                        form.querySelector(".rf-filenames-list").innerHTML="";
                     }
 
                     //clear all fields of the form
@@ -362,7 +357,7 @@ RadicalFormClass = function () {
                         return;
                     }
                     if (response.success) {
-                        if (response.data[0][0] === "ok") {
+                        if (response.data[0][0]==="ok") {
 
                             if (RadicalForm.Jivosite === "1") {
                                 try {
@@ -390,7 +385,7 @@ RadicalFormClass = function () {
                                 } catch (e) {
                                     console.error('Radical Form JS Code: ', e);
                                 }
-                            }
+                             }
 
                             message = RadicalForm.AfterSend;
                             if (buttonPressed.dataset.rfCall === undefined) {
@@ -439,14 +434,14 @@ RadicalFormClass = function () {
 
                     } else {
                         try {
-                            rfCall_9((response.message), buttonPressed);
+                            rfCall_9((response.message),buttonPressed);
                         } catch (e) {
                             console.error('Radical Form JS Code: ', e);
                         }
                     }
                 } else if (this.readyState === 4 && this.status !== 200) {
-                    buttonPressed.innerHTML = prevousButtonText;
-                    buttonPressed.disabled = false;
+                    buttonPressed.innerHTML=prevousButtonText;
+                    buttonPressed.disabled=false;
                     try {
                         rfCall_9((request.status + ' ' + request.message), buttonPressed);
                     } catch (e) {
@@ -462,7 +457,7 @@ RadicalFormClass = function () {
      * Send file to server
      * @param e
      */
-    this.fileSend = function (e) {
+    this.fileSend = function(e) {
         if (!this.getAttribute("name")) {
             alert("RadicalForm: There is no 'name' attribute for rf-upload-button!\r\nFile can't uploaded. Please, add name attribute for file input tag.");
             return;
@@ -474,14 +469,14 @@ RadicalFormClass = function () {
             form = selfClass.closest(this, '.rf-form'),
             rf_filenames_list = form.querySelector('.rf-filenames-list') || document.createElement('div'),
             buttonPressed = this,
-            rfDelete = "&nbsp;<svg class=\"rf-button-delete\" style=\"cursor: pointer;\" height=\"16\" viewBox=\"0 0 512 512\" width=\"16\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M256 0C114.836 0 0 114.836 0 256s114.836 256 256 256 256-114.836 256-256S397.164 0 256 0zm0 0\" fill=\"" + RadicalForm.DeleteBackground + "\"/><path d=\"M350.273 320.105c8.34 8.344 8.34 21.825 0 30.168a21.275 21.275 0 01-15.086 6.25c-5.46 0-10.921-2.09-15.082-6.25L256 286.164l-64.105 64.11a21.273 21.273 0 01-15.083 6.25 21.275 21.275 0 01-15.085-6.25c-8.34-8.344-8.34-21.825 0-30.169L225.836 256l-64.11-64.105c-8.34-8.344-8.34-21.825 0-30.168 8.344-8.34 21.825-8.34 30.169 0L256 225.836l64.105-64.11c8.344-8.34 21.825-8.34 30.168 0 8.34 8.344 8.34 21.825 0 30.169L286.164 256zm0 0\" fill=\"" + RadicalForm.DeleteColor + "\"/></svg>";
+            rfDelete="&nbsp;<svg class=\"rf-button-delete\" style=\"cursor: pointer;\" height=\"16\" viewBox=\"0 0 512 512\" width=\"16\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M256 0C114.836 0 0 114.836 0 256s114.836 256 256 256 256-114.836 256-256S397.164 0 256 0zm0 0\" fill=\"" + RadicalForm.DeleteBackground + "\"/><path d=\"M350.273 320.105c8.34 8.344 8.34 21.825 0 30.168a21.275 21.275 0 01-15.086 6.25c-5.46 0-10.921-2.09-15.082-6.25L256 286.164l-64.105 64.11a21.273 21.273 0 01-15.083 6.25 21.275 21.275 0 01-15.085-6.25c-8.34-8.344-8.34-21.825 0-30.169L225.836 256l-64.11-64.105c-8.34-8.344-8.34-21.825 0-30.168 8.344-8.34 21.825-8.34 30.169 0L256 225.836l64.105-64.11c8.344-8.34 21.825-8.34 30.168 0 8.34 8.344 8.34 21.825 0 30.169L286.164 256zm0 0\" fill=\""  +RadicalForm.DeleteColor + "\"/></svg>";
 
         formData.append(this.name, this.files[0]);
 
         if (this.files[0].size < RadicalForm.MaxSize) {
             formData.append("uniq", selfClass.uniq);
 
-            if (textForUploadButton) {
+            if(textForUploadButton) {
                 textForUploadButton.innerHTML = RadicalForm.waitingForUpload;
                 textForUploadButton.disabled = true;
             }
@@ -493,7 +488,7 @@ RadicalFormClass = function () {
             request.send(formData);
             request.onreadystatechange = function () {
                 if (this.readyState === 4 && this.status === 200) {
-                    if (textForUploadButton) {
+                    if(textForUploadButton) {
                         textForUploadButton.disabled = false;
                         textForUploadButton.innerHTML = previousTextForUploadButton;
                     }
@@ -507,7 +502,7 @@ RadicalFormClass = function () {
                         return;
                     }
                     if (response.success) {
-                        var el = rf_filenames_list.querySelector("." + selfClass.error_file_classes.join('.'));
+                        var el=rf_filenames_list.querySelector("." + selfClass.error_file_classes.join('.'));
 
                         if (el) {
                             el.parentNode.removeChild(el);
@@ -518,7 +513,7 @@ RadicalFormClass = function () {
                             if (rf_filenames_list.textContent.trim() === "") {
                                 rf_filenames_list.insertAdjacentHTML('beforeend', "<div>" + RadicalForm.thisFilesWillBeSend + "</div>");
                             }
-                            if (!form.querySelector("input[name=needToSendFiles]")) {
+                            if(!form.querySelector("input[name=needToSendFiles]")) {
                                 form.insertAdjacentHTML('beforeend', '<input type="hidden" name="needToSendFiles" value="1" />');
                             }
                             rf_filenames_list.insertAdjacentHTML('beforeend', "<div data-name='" + response.data[0].key + "'><span>" + response.data[0].name + "</span>" + rfDelete + "</div>");
@@ -528,7 +523,7 @@ RadicalFormClass = function () {
                         rf_filenames_list.insertAdjacentHTML('beforeend', "<div>" + response.message + "</div>");
                     }
                 } else if (this.readyState === 4 && this.status !== 200) {
-                    if (textForUploadButton) {
+                    if(textForUploadButton) {
                         textForUploadButton.disabled = false;
                         textForUploadButton.innerHTML = previousTextForUploadButton;
                     }
@@ -543,13 +538,13 @@ RadicalFormClass = function () {
             };
 
         } else {
-            var el = rf_filenames_list.querySelector("." + selfClass.error_file_classes.join('.'));
+            var el=rf_filenames_list.querySelector("." + selfClass.error_file_classes.join('.'));
 
             if (el) {
                 el.parentNode.removeChild(el);
             }
 
-            rf_filenames_list.insertAdjacentHTML('beforeend', "<div class='" + selfClass.error_file_classes.join(' ') + "'>" + RadicalForm.ErrorMax + "</div>"); // size is more than limit
+            rf_filenames_list.insertAdjacentHTML('beforeend',"<div class='" + selfClass.error_file_classes.join(' ') + "'>" + RadicalForm.ErrorMax + "</div>"); // size is more than limit
         }
 
     };
@@ -566,7 +561,7 @@ RadicalFormClass = function () {
         }, false);
     };
 
-    this.closest = function (el, selector) {
+    this.closest =  function(el, selector) {
         var matchesSelector = el.matches || el.webkitMatchesSelector || el.mozMatchesSelector || el.msMatchesSelector;
 
         while (el) {
@@ -585,9 +580,9 @@ RadicalFormClass = function () {
         var elements = Array.from(formToClear.querySelectorAll('input[name], select[name], textarea[name]'));
 
 
-        for (var i = 0; i < elements.length; i++) {
+        for(var i=0; i<elements.length; i++) {
 
-            switch (elements[i].type.toLowerCase()) {
+            switch(elements[i].type.toLowerCase()) {
 
                 case "radio":
                 case "checkbox":
@@ -634,19 +629,19 @@ RadicalFormClass = function () {
             + "." + year;
     }
     // This function is for RadicalForm Elements Steps
-    this.nextStep = function (el, targetStep, animationStep, previous) {
+    this.nextStep = function (el,targetStep,animationStep,previous) {
 
         // targetStep - это путь от родительского класса к обрамляющему фрейму шага, которое гасится атрибутом hidden при переключении шагов
         // el - это текущая кнопка "далее"
 
-        var step = selfClass.closest(el, targetStep); // это путь текущему фрейму шага, который все обрамляет
+        var step = selfClass.closest(el,targetStep); // это путь текущему фрейму шага, который все обрамляет
         var needReturn = false; // признак нарушения заполненности полей
         var elementsArray = document.querySelectorAll(targetStep + " .rf-next"); // список всех кнопок квиза
         var currentButtonNext = step.querySelector(".rf-next"); // ищем текущую кнопку Next, так как при нажатии на Previous мы должны работать с кнопками Next
         var currentIndex = Array.from(elementsArray).indexOf(currentButtonNext);
         // Если элемент не найден или является последним в массиве и при этому не является кнопкой назад
-        if (!previous) {
-            if (currentIndex === -1 || currentIndex === elementsArray.length - 1) {
+        if(!previous) {
+            if (currentIndex === -1 || currentIndex === elementsArray.length - 1 ) {
                 console.log("Last element reached ");
                 return null; // то ничего не делаем и возвращаемся
             }
@@ -661,7 +656,7 @@ RadicalFormClass = function () {
             previousStep = selfClass.closest(previousEl, targetStep);
         }
 
-        if (previous) {
+        if(previous) {
             // we go to the previous step, so we need to remove all events from button next of the previous step
             var elementForClone = previousEl,
                 elementCloned = elementForClone.cloneNode(true);
@@ -694,13 +689,13 @@ RadicalFormClass = function () {
         }
 
         if (!needReturn) {
-            if (animationStep) {
-                UIkit.toggle(el, {
+            if(animationStep) {
+                UIkit.toggle(el,{
                     target: [step, nextStep],
                     animation: animationStep
                 }).toggle();
             } else {
-                UIkit.toggle(el, {
+                UIkit.toggle(el,{
                     target: [step, nextStep]
                 }).toggle();
             }

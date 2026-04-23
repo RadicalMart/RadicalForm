@@ -1,35 +1,29 @@
-/*
- * @package   RadicalForm
- * @version   __DEPLOY_VERSION__
- * @author    Vladimir Eliseev aka Progreccor - https://progreccor.ru
- * @copyright Copyright (c) 2025 Progreccor. All rights reserved.
- * @license   GNU/GPL license: http://www.gnu.org/copyleft/gpl.html
- * @link      https://progreccor.ru
- */
-
 if (!window.Joomla) {
     throw new Error('Joomla API was not properly initialised');
 }
-
 function ready(fn) {
-    if (document.readyState != 'loading') {
+    if (document.readyState != 'loading'){
         fn();
     } else {
         document.addEventListener('DOMContentLoaded', fn);
     }
 }
-
 ready(function () {
-    const table = document.querySelector(".rf-telegram-chatid table");
-    if (exportCSV) {
+
+    const table = document.querySelector(".reg-rules table");
+    if(table) {
         table.classList.add("table-striped", "table-bordered");
     }
+    const table1 = document.querySelector(".rf-telegram-chatid table");
+    if(table1) {
+        table1.classList.add("table-striped", "table-bordered");
+    }
 
-    function getUrlParams(url) {
+    function getUrlParams(url){
         var regex = /[?&]([^=#]+)=([^&#]*)/g,
             params = {},
             match;
-        while (match = regex.exec(url)) {
+        while(match = regex.exec(url)) {
             params[match[1]] = match[2];
         }
         return params;
@@ -40,7 +34,8 @@ ready(function () {
     currentGetParams = getUrlParams(location.search);
 
     var historyClear = document.querySelector("#historyclear");
-    if (historyClear) {
+    if(historyClear)
+    {
         historyClear.addEventListener('click', async function (event) {
             historyClear.innerHTML = "Wait...";
             historyClear.disabled = true;
@@ -51,11 +46,11 @@ ready(function () {
             }
             Joomla.request({
                 url: "index.php?option=com_ajax&plugin=radicalform&format=json&group=system&admin=2&page=" + page,
-                onSuccess: function (response, xhr) {
+                onSuccess: function (response, xhr){
                     // Тут делаем что-то с результатами
                     location.reload();
                 },
-                onError: function (xhr) {
+                onError: function(xhr){
                     // Тут делаем что-то в случае ошибки запроса.
                     location.reload();
                 }
@@ -72,18 +67,19 @@ ready(function () {
     }
 
     var numberClear = document.querySelector("#numberclear");
-    if (numberClear) {
+    if(numberClear)
+    {
         // reset the numbering of forms sent
         numberClear.addEventListener('click', function (event) {
-            numberClear.innerHTML = "Wait...";
+            numberClear.innerHTML  = "Wait...";
             numberClear.disabled = true;
             Joomla.request({
-                url: "index.php?option=com_ajax&plugin=radicalform&format=json&group=system&admin=3",
-                onSuccess: function (response, xhr) {
+                url: "index.php?option=com_ajax&plugin=radicalform&format=json&group=system&admin=3" ,
+                onSuccess: function (response, xhr){
                     // Тут делаем что-то с результатами
                     location.reload();
                 },
-                onError: function (xhr) {
+                onError: function(xhr){
                     // Тут делаем что-то в случае ошибки запроса.
                     location.reload();
                 }
@@ -97,9 +93,10 @@ ready(function () {
     }
 
     var exportCSV = document.querySelector("#exportcsv");
-    if (exportCSV) {
+    if(exportCSV)
+    {
         exportCSV.addEventListener('click', function (event) {
-            var temp = exportCSV.innerHTML;
+            var temp=exportCSV.innerHTML;
             exportCSV.innerHTML = "Wait...";
             exportCSV.disabled = true;
 
@@ -110,66 +107,77 @@ ready(function () {
         });
     }
 
-    //show the info about need to save parameters
+
+
+
+//show the info about need to save parameters
     [].forEach.call(document.querySelectorAll('#attrib-list label.btn'), function (el) {
-        el.addEventListener('click', function (e) {
-            if (!document.querySelector("#attrib-list .alert.alert-info.hidden")) return;
+        el.addEventListener('click',function (e) {
+            if(!document.querySelector("#attrib-list .alert.alert-info.hidden")) return;
             document.querySelector("#attrib-list .alert.alert-info.hidden").classList.remove("hidden");
         });
     });
 
+
     document.querySelector("#radicalformcheck").addEventListener('click', function (event) {
-        var radicalformcheck = document.querySelector("#radicalformcheck"),
+        var radicalformcheck=document.querySelector("#radicalformcheck"),
             temp = radicalformcheck.innerHTML;
-        radicalformcheck.innerHTML = "Wait...";
+        radicalformcheck.innerHTML="Wait...";
         radicalformcheck.disabled = true;
+
 
         var request = new XMLHttpRequest();
         request.open('GET', 'index.php?option=com_ajax&plugin=radicalform&format=json&group=system&admin=1', true);
 
-        request.onload = function () {
+        request.onload = function() {
             if (this.status >= 200 && this.status < 400) {
                 // Success!
                 var data = JSON.parse(this.response);
-                if (data.data[0].ok) {
-                    var output = data.data[0].chatids;
-                    if (output.length > 0) {
-                        for (var i = 0; i < output.length; i++) {
-                            var found = false;
+                if(data.data[0].ok) {
+                    var output=data.data[0].chatids;
+                    if(output.length>0) {
+                        for(var i=0;i<output.length;i++) {
+                            var found=false;
                             [].forEach.call(document.querySelectorAll('#attrib-advanced .rf-telegram-chatid tr td:first-child input'), function (el) {
-                                if (el.value == output[i].chatID) {
-                                    found = true;
+                                if(el.value==output[i].chatID) {
+                                    found=true;
                                 }
                             })
 
-                            if (!found) {
+                            if(!found) {
                                 var event = document.createEvent('HTMLEvents');
                                 event.initEvent('click', true, false);
-                                document.querySelector("#attrib-advanced .rf-telegram-chatid thead button").dispatchEvent(event);
+                                document.querySelector("#attrib-advanced .rf-telegram-chatid thead .btn").dispatchEvent(event);
 
-                                var lastString = document.querySelectorAll("#attrib-advanced .rf-telegram-chatid tr:last-child input");
-                                lastString[0].value = output[i].chatID;
-                                lastString[1].value = output[i].name;
+                                var lastString=document.querySelectorAll("#attrib-advanced .rf-telegram-chatid tr:last-child input");
+                                lastString[0].value=output[i].chatID;
+                                lastString[1].value=output[i].name;
 
                             }
                         }
                     } else {
-                        Joomla.renderMessages({"warning": ["There are no messages to bot"]}, "#radicalformresult");
+                        Joomla.renderMessages({"warning":["There are no messages to bot"]},"#radicalformresult");
                     }
+
+
                 } else {
-                    Joomla.renderMessages({"danger": ["<strong>Error code " + data.data[0].error_code + "</strong><br>" + data.data[0].description]}, "#radicalformresult");
+                    Joomla.renderMessages({"danger":["<strong>Error code "+data.data[0].error_code+"</strong><br>" + data.data[0].description]},"#radicalformresult");
+
+
                 }
+
             } else {
                 // We reached our target server, but it returned an error
-                Joomla.renderMessages({"danger": ["<strong>Error</strong><br>" + this.response]}, "#radicalformresult");
+                Joomla.renderMessages({"danger":["<strong>Error</strong><br>" + this.response]},"#radicalformresult");
+
             }
             radicalformcheck.disabled = false;
             radicalformcheck.innerHTML = temp;
         };
 
-        request.onerror = function () {
+        request.onerror = function() {
             // There was a connection error of some sort
-            document.querySelector("#radicalformcheck").insertAdjacentHTML("afterend", "<div class=\"alert alert-error input-xxlarge telegram-note\"><button type=\"button\" class=\"close\" data-dismiss=\"alert\">×</button><h4>Error </h4><span>Error connection</span></div>")
+            document.querySelector("#radicalformcheck").insertAdjacentHTML("afterend","<div class=\"alert alert-error input-xxlarge telegram-note\"><button type=\"button\" class=\"close\" data-dismiss=\"alert\">×</button><h4>Error </h4><span>Error connection</span></div>")
 
             radicalformcheck.disabled = false;
             radicalformcheck.innerHTML = temp;
@@ -179,6 +187,5 @@ ready(function () {
 
         event.preventDefault();
     });
+
 });
-
-

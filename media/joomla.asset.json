@@ -14,6 +14,9 @@
             "name": "plg_system_radicalform.config",
             "type": "script",
             "uri": "plg_system_radicalform/adminscript.js",
+            "dependencies": [
+                "core"
+            ],
             "attributes": {
                 "defer": true,
                 "type": "module"

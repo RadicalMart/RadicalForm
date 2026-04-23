@@ -11,12 +11,12 @@
 <extension type="plugin" version="5.2" method="upgrade" group="system">
     <name>PLG_RADICALFORM</name>
     <author>Progreccor</author>
-    <authorEmail>info@hika.su</authorEmail>
-    <authorUrl>https://hika.su</authorUrl>
-    <copyright>Copyright (C) 2023 Progreccor. All rights reserved.</copyright>
+    <authorEmail>vladimir@radicalmart.ru</authorEmail>
+    <authorUrl>https://radicalmart.ru</authorUrl>
+    <copyright>Copyright (C) 2026 Progreccor. All rights reserved.</copyright>
     <license>GNU General Public License version 2 or later;</license>
-    <version>3.1.6-dev</version>
-    <creationDate>2024-04-17</creationDate>
+    <version>4.0.0</version>
+    <creationDate>2026-04-17</creationDate>
     <description>PLG_RADICALFORM_DESC</description>
     <scriptfile>script.php</scriptfile>
     <namespace path="src">Joomla\Plugin\System\RadicalForm</namespace>
@@ -81,6 +81,7 @@
                         name="rfCall_0"
                         label="PLG_RADICALFORM_RF_CALL_0"
                         description="PLG_RADICALFORM_RF_CALL_0_DESCRIPTION"
+                        height="140"
                         filter="raw"
                         syntax="php"
                         editor="codemirror|none"
@@ -92,6 +93,7 @@
                         type="editor"
                         label="PLG_RADICALFORM_RF_CALL_1"
                         description="PLG_RADICALFORM_RF_CALL_1_DESCRIPTION"
+                        height="140"
                         editor="codemirror|none"
                         syntax="php"
                         buttons="false"
@@ -104,6 +106,7 @@
                         syntax="php"
                         label="PLG_RADICALFORM_RF_CALL_2"
                         description="PLG_RADICALFORM_RF_CALL_2_DESCRIPTION"
+                        height="140"
                         filter="raw"
                         default="alert(rfMessage);"
                 />
@@ -114,6 +117,7 @@
                         syntax="php"
                         label="PLG_RADICALFORM_RF_CALL_3"
                         description="PLG_RADICALFORM_RF_CALL_3_DESCRIPTION"
+                        height="140"
                         filter="raw"
 
                 />
@@ -135,6 +139,7 @@
                         syntax="php"
                         label="PLG_RADICALFORM_RF_CALL_9"
                         description="PLG_RADICALFORM_RF_CALL_9_DESCRIPTION"
+                        height="140"
                         filter="raw"
                         default="alert(rfMessage);"
                         showon="rfCall_9on:1"
@@ -524,9 +529,9 @@
                        class="rf-telegram-chatid"
                 >
                     <form>
-                        <field name="chat_id" type="text" label="Chat_id"/>
-                        <field name="username" type="text" label="Username"/>
-                        <field name="target" type="text" label="Target ID"/>
+                        <field name="chat_id" type="text" label="Chat_id" class="w-100"/>
+                        <field name="username" type="text" label="Username" class="w-100"/>
+                        <field name="target" type="text" label="Target ID" class="w-100"/>
                     </form>
                 </field>
 
@@ -586,6 +591,87 @@
                         <field name="target" type="text" label="Target ID"/>
                     </form>
                 </field>
+            </fieldset>
+            <fieldset name="antispam" label="PLG_RADICALFORM_ANTISPAM">
+                <field
+                        name="antispam_message"
+                        type="text"
+                        label="PLG_RADICALFORM_ANTISPAM_MESSAGE"
+                        description="PLG_RADICALFORM_ANTISPAM_MESSAGE_DESC"
+                        required="false"
+                        default="PLG_RADICALFORM_ANTISPAM_BLOCKED"
+                        class="input-xxlarge"
+                        filter="raw">
+                </field>
+                <field
+                        name="duration_range"
+                        type="text"
+                        label="PLG_RADICALFORM_DURATION_RANGE"
+                        description="PLG_RADICALFORM_DURATION_RANGE_DESC"
+                        required="false"
+                        default=""
+                        class="input-xxlarge"
+                        filter="raw">
+                </field>
+                <field
+                        name="ip_blacklist"
+                        type="textarea"
+                        label="PLG_RADICALFORM_IP_BLACKLIST"
+                        description="PLG_RADICALFORM_IP_BLACKLIST_DESC"
+                        required="false"
+                        rows="8"
+                        class="input-xxlarge"
+                        filter="raw">
+                </field>
+                <field name="content_rules" type="subform"
+                       multiple="true"
+                       label="PLG_RADICALFORM_CONTENT_RULES"
+                       class="reg-rules"
+                       description="PLG_RADICALFORM_CONTENT_RULES_DESC"
+                       layout="joomla.form.field.subform.repeatable-table"
+                >
+                    <form>
+                        <field
+                                name="fields"
+                                hint="PLG_RADICALFORM_CONTENT_RULE_FIELDS_HINT"
+                                class="w-100"
+                                type="text"
+                                label="PLG_RADICALFORM_CONTENT_RULE_FIELDS"
+                                description="PLG_RADICALFORM_CONTENT_RULE_FIELDS_DESC"
+                        />
+                        <field
+                                name="mode"
+                                class="w-100"
+                                type="list"
+                                label="PLG_RADICALFORM_CONTENT_RULE_MODE"
+                                default="contains"
+                        >
+                            <option value="contains">PLG_RADICALFORM_CONTENT_RULE_MODE_CONTAINS</option>
+                            <option value="regex">PLG_RADICALFORM_CONTENT_RULE_MODE_REGEX</option>
+                        </field>
+                        <field
+                                name="pattern"
+                                class="w-100"
+                                type="text"
+                                label="PLG_RADICALFORM_CONTENT_RULE_PATTERN"
+                                description="PLG_RADICALFORM_CONTENT_RULE_PATTERN_DESC"
+                        />
+                        <field
+                                name="comment"
+                                class="w-100"
+                                type="text"
+                                label="PLG_RADICALFORM_CONTENT_RULE_COMMENT"
+                                description="PLG_RADICALFORM_CONTENT_RULE_COMMENT_DESC"
+                        />
+                    </form>
+                </field>
+                <field
+                        name="antispam_regex_note"
+                        type="note"
+                        class="alert alert-info input-xxlarge"
+                        label="PLG_RADICALFORM_CONTENT_RULE_REGEX_NOTE_LABEL"
+                        description="PLG_RADICALFORM_CONTENT_RULE_REGEX_NOTE"
+                />
             </fieldset>
             <fieldset name="list" label="PLG_RADICALFORM_HISTORY">
                 <field
