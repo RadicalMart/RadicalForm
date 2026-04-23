@@ -39,9 +39,9 @@
 
 
 
-Подробнее можно прочитать [здесь](https://hika.su/rasshireniya/radical-form)](https://radicalmart.ru/all/radicalform)
+Подробнее можно прочитать [здесь](https://radicalmart.ru/all/radicalform)
 
-Скачать можно здесь [https://github.com/progreccor/radicalform/releases](https://github.com/RadicalMart/RadicalForm/releases)
+Скачать можно здесь https://github.com/RadicalMart/RadicalForm/releases
 
 Если есть проблемы со скачиванием с github - резервная ссылка для скачивания:
 
@@ -80,7 +80,7 @@ A radically new approach to creating feedback forms
 
 You can read more [here](https://radicalmart.ru/all/radicalform)
 
-You can download here [https://github.com/progreccor/radicalform/releases](https://github.com/RadicalMart/RadicalForm/releases)
+You can download here https://github.com/RadicalMart/RadicalForm/releases
 
 If there are problems with downloading from github - a backup link for download:
 
