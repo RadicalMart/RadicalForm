@@ -23,6 +23,20 @@ RadicalFormClass = function () {
     this.danger_classes = RadicalForm.DangerClass.trim().split(/\s+/);
     this.error_file_classes = RadicalForm.ErrorFile.trim().split(/\s+/);
 
+    this.runRfCall = function(number, rfMessage, here) {
+        var rfCallName = 'rfCall_' + number;
+
+        if (typeof window[rfCallName] === 'function') {
+            try {
+                window[rfCallName](rfMessage, here);
+            } catch (e) {
+                console.error('Radical Form JS Code: ', e);
+            }
+        } else {
+            console.error('RadicalForm: ' + rfCallName + ' is not set in plugin settings but requested by data-rf-call.');
+        }
+    };
+
     if (RadicalForm.KeepAlive != 0) {
         window.setInterval(function() {
 
@@ -389,35 +403,19 @@ RadicalFormClass = function () {
 
                             message = RadicalForm.AfterSend;
                             if (buttonPressed.dataset.rfCall === undefined) {
-                                try {
-                                    rfCall_2(message, buttonPressed);
-                                } catch (e) {
-                                    console.error('Radical Form JS Code: ', e);
-                                }
+                                selfClass.runRfCall('2', message, buttonPressed);
                             } else {
                                 rfCall = String(buttonPressed.dataset.rfCall);
                                 for (var i = 0; i < rfCall.length; i++) {
                                     switch (rfCall[i]) {
                                         case "1":
-                                            try {
-                                                rfCall_1(message, buttonPressed);
-                                            } catch (e) {
-                                                console.error('Radical Form JS Code: ', e);
-                                            }
+                                            selfClass.runRfCall('1', message, buttonPressed);
                                             break;
                                         case "2":
-                                            try {
-                                                rfCall_2(message, buttonPressed);
-                                            } catch (e) {
-                                                console.error('Radical Form JS Code: ', e);
-                                            }
+                                            selfClass.runRfCall('2', message, buttonPressed);
                                             break;
                                         case "3":
-                                            try {
-                                                rfCall_3(message, buttonPressed);
-                                            } catch (e) {
-                                                console.error('Radical Form JS Code: ', e);
-                                            }
+                                            selfClass.runRfCall('3', message, buttonPressed);
                                     }
 
                                 }

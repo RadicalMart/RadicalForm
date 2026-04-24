@@ -1279,7 +1279,7 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 				$output  = $output["result"];
 				$chatIDs = [];
 
-				// проверяем все сообщения присланные боту и вытаскиваем оттуда chat_id
+				// проверяем все сообщения, присланные боту, и вытаскиваем оттуда chat_id
 				foreach ($output as $chat)
 				{
 					$chatID = $chat["message"]["chat"]["id"];
