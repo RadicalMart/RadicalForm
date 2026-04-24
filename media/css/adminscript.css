@@ -27,7 +27,11 @@
 }
 
 .historytable {
-    max-width: 1040px;
+    max-width: 1240px;
+}
+
+.historytable details {
+    margin: 0;
 }
 
 .firstEntry strong {

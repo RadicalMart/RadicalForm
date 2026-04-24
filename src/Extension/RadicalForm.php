@@ -1056,7 +1056,6 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 				header('Expires: 0');
 				header('Cache-Control: no-cache');
 				$BOM = "\xEF\xBB\xBF";
-				echo $BOM;
 				$csv = "#;";
 				$csv .= Text::_('PLG_RADICALFORM_HISTORY_TIME') . ';';
 				if ($this->params->get('showtarget'))
@@ -1081,6 +1080,11 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 				{
 					for ($i = 0; $i < 6; $i++)
 					{
+						if (!isset($data[$i]))
+						{
+							continue;
+						}
+
 						if (count($data[$i]) < 4 || $data[$i][0][0] == '#')
 						{
 							unset($data[$i]);
@@ -1239,7 +1243,8 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 
 				}
 
-				return $csv;
+				echo $BOM . $csv;
+				$this->getApplication()->close(200);
 			}
 		}
 
