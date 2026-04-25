@@ -765,7 +765,7 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 			mkdir($this->params->get('uploadstorage'));
 		}
 
-		// вначале проверим есть ли папки,подлежащие удалению по старости
+		// вначале проверим есть ли папки, подлежащие удалению по старости
 		$folders = Folder::folders($this->params->get('uploadstorage'), "rf-*", false, true);
 		$maxtime = $this->params->get('maxtime', 30) * 86400;
 
@@ -785,7 +785,7 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 		{
 			if (!file_exists($uploaddir))
 			{
-				mkdir($uploaddir); // создаем папку если ее нет для файлов
+				mkdir($uploaddir); // создаем папку, если ее нет для файлов
 			}
 
 			// надо посчитать вначале размер всех файлов в папке
@@ -794,6 +794,12 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 
 			foreach ($files as $key => $file)
 			{
+				$key = $this->makeSafe(basename((string) $key));
+				if ($key === '')
+				{
+					continue;
+				}
+
 				if ($file['name'])
 				{
 					$mime     = $this->mimetype($file['tmp_name']);
@@ -976,6 +982,11 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 		$name    = $this->makeSafe(basename($name));
 		$catalog = $this->makeSafe(basename($catalog));
 		$uniq    = (int) $uniq;
+
+		if ($name === '' || $catalog === '' || $uniq <= 0)
+		{
+			return "ok";
+		}
 
 		$filename = $this->params->get('uploadstorage') . '/rf-' . $uniq . "/" . $catalog . "/" . $name;
 		if (file_exists($filename))
@@ -1394,12 +1405,6 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 
 		$uniq = (int) $input['uniq'];
 
-		if (isset($get['file']) && $get['file'] == 1)
-		{
-			// Здесь нам передали файл. Что же, будем обрабатывать
-			$this->setResponse($this->processUploadedFiles($files, $uniq));
-		}
-
 		if ($this->getApplication()->getSession()->isNew() || !$this->getApplication()->getSession()->checkToken())
 		{
 			$input = ['rfLatestNumber' => $latestNumber, 'message' => Text::_('PLG_RADICALFORM_INVALID_TOKEN')];
@@ -1407,6 +1412,12 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 
 			$this->setResponse(Text::_('PLG_RADICALFORM_INVALID_TOKEN'));
 		};
+
+		if (isset($get['file']) && $get['file'] == 1)
+		{
+			// Здесь нам передали файл. Что же, будем обрабатывать
+			$this->setResponse($this->processUploadedFiles($files, $uniq));
+		}
 
 		$antiSpamReason = $this->checkAntiSpam($input);
 

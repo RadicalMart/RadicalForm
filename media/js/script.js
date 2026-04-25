@@ -9,6 +9,7 @@ function ready(fn) {
 RadicalFormClass = function () {
 
     var selfClass = this;
+    this.formToken = '';
 
     /**
      * get uniq id for upload a file.
@@ -93,6 +94,7 @@ RadicalFormClass = function () {
             if (this.status >= 200 && this.status < 400) {
                 // Success!
                 var data = JSON.parse(this.response);
+                selfClass.formToken = data.data[0];
                 [].forEach.call(container.querySelectorAll('.rf-form .rf-button-send'), function (el) {
                     el.insertAdjacentHTML('afterend', '<input type="hidden" name="'+data.data[0]+'" value="1" />');
                 });
@@ -473,6 +475,9 @@ RadicalFormClass = function () {
 
         if (this.files[0].size < RadicalForm.MaxSize) {
             formData.append("uniq", selfClass.uniq);
+            if (selfClass.formToken) {
+                formData.append(selfClass.formToken, "1");
+            }
 
             if(textForUploadButton) {
                 textForUploadButton.innerHTML = RadicalForm.waitingForUpload;
