@@ -326,6 +326,16 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 			}
 		}
 
+		if (isset($input['rfUserAgent']))
+		{
+			$normalized = $this->normalizeAntiSpamValue($input['rfUserAgent']);
+
+			if ($normalized !== '')
+			{
+				$payload['rfUserAgent'] = $normalized;
+			}
+		}
+
 		return $payload;
 	}
 
