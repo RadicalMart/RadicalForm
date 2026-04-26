@@ -18,6 +18,10 @@ ready(function () {
     if(table1) {
         table1.classList.add("table-striped", "table-bordered");
     }
+    const table2 = document.querySelector(".rf-max-recipients table");
+    if(table2) {
+        table2.classList.add("table-striped", "table-bordered");
+    }
 
     function getUrlParams(url){
         var regex = /[?&]([^=#]+)=([^&#]*)/g,
@@ -119,7 +123,10 @@ ready(function () {
     });
 
 
-    document.querySelector("#radicalformcheck").addEventListener('click', function (event) {
+    var radicalformCheckButton = document.querySelector("#radicalformcheck");
+    if(radicalformCheckButton)
+    {
+        radicalformCheckButton.addEventListener('click', function (event) {
         var radicalformcheck=document.querySelector("#radicalformcheck"),
             temp = radicalformcheck.innerHTML;
         radicalformcheck.innerHTML="Wait...";
@@ -186,6 +193,70 @@ ready(function () {
         request.send();
 
         event.preventDefault();
-    });
+        });
+    }
+
+    var radicalformCheckMaxButton = document.querySelector("#radicalformcheckmax");
+    if(radicalformCheckMaxButton)
+    {
+        radicalformCheckMaxButton.addEventListener('click', function (event) {
+            var radicalformcheckmax=document.querySelector("#radicalformcheckmax"),
+                temp = radicalformcheckmax.innerHTML;
+            radicalformcheckmax.innerHTML="Wait...";
+            radicalformcheckmax.disabled = true;
+
+            var request = new XMLHttpRequest();
+            request.open('GET', 'index.php?option=com_ajax&plugin=radicalform&format=json&group=system&admin=maxupdates', true);
+
+            request.onload = function() {
+                if (this.status >= 200 && this.status < 400) {
+                    var data = JSON.parse(this.response);
+                    if(data.data[0].ok) {
+                        var output=data.data[0].recipients;
+                        if(output.length>0) {
+                            for(var i=0;i<output.length;i++) {
+                                var found=false;
+                                [].forEach.call(document.querySelectorAll('#attrib-advanced .rf-max-recipients tr td:first-child input'), function (el) {
+                                    if(el.value==output[i].id) {
+                                        found=true;
+                                    }
+                                })
+
+                                if(!found) {
+                                    var event = document.createEvent('HTMLEvents');
+                                    event.initEvent('click', true, false);
+                                    document.querySelector("#attrib-advanced .rf-max-recipients thead .btn").dispatchEvent(event);
+
+                                    var lastString=document.querySelectorAll("#attrib-advanced .rf-max-recipients tr:last-child input, #attrib-advanced .rf-max-recipients tr:last-child select");
+                                    lastString[0].value=output[i].id;
+                                    lastString[1].value=output[i].type;
+                                    lastString[2].value=output[i].name;
+                                }
+                            }
+                        } else {
+                            Joomla.renderMessages({"warning":["There are no messages to MAX bot"]},"#radicalformmaxresult");
+                        }
+                    } else {
+                        Joomla.renderMessages({"danger":["<strong>Error</strong><br>" + JSON.stringify(data.data[0])]},"#radicalformmaxresult");
+                    }
+                } else {
+                    Joomla.renderMessages({"danger":["<strong>Error</strong><br>" + this.response]},"#radicalformmaxresult");
+                }
+                radicalformcheckmax.disabled = false;
+                radicalformcheckmax.innerHTML = temp;
+            };
+
+            request.onerror = function() {
+                document.querySelector("#radicalformcheckmax").insertAdjacentHTML("afterend","<div class=\"alert alert-error input-xxlarge max-note\"><button type=\"button\" class=\"close\" data-dismiss=\"alert\">×</button><h4>Error </h4><span>Error connection</span></div>")
+
+                radicalformcheckmax.disabled = false;
+                radicalformcheckmax.innerHTML = temp;
+            };
+
+            request.send();
+
+            event.preventDefault();
+        });
+    }
 
 });

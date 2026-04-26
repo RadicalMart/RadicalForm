@@ -31,6 +31,7 @@ use Joomla\Database\DatabaseAwareTrait;
 use Joomla\Event\SubscriberInterface;
 use Joomla\Filesystem\File;
 use Joomla\Filesystem\Folder;
+use Joomla\Plugin\System\RadicalForm\Helper\MaxHelper;
 use Joomla\Plugin\System\RadicalForm\Helper\RadicalFormHelper;
 use Joomla\String\StringHelper;
 use Joomla\CMS\HTML\HTMLHelper;
@@ -1338,6 +1339,38 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 			}
 		}
 
+		if (isset($get['admin']) && $get['admin'] == 'maxupdates')
+		{
+			if ($this->getApplication()->isClient('administrator'))
+			{
+				$token   = (string) $this->params->get('maxtoken');
+				$updates = MaxHelper::getUpdates($token);
+				$chats   = MaxHelper::getChats($token);
+
+				if (isset($updates['status_code']) || isset($updates['error']))
+				{
+					$this->setResponse($updates);
+				}
+
+				if (isset($chats['status_code']) || isset($chats['error']))
+				{
+					$this->setResponse($chats);
+				}
+
+				$this->setResponse([
+					'ok'         => true,
+					'recipients' => MaxHelper::mergeRecipients(
+						MaxHelper::extractRecipients($updates),
+						MaxHelper::extractChats($chats)
+					),
+				]);
+			}
+			else
+			{
+				return false;
+			}
+		}
+
 		// here we try to load current logfile
 		$site_offset = $this->getApplication()->get('offset'); //get offset of joomla time like asia/kolkata
 		$log_path    = str_replace('\\', '/', $this->getApplication()->get('log_path'));
@@ -1713,6 +1746,31 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 					curl_setopt($ch, CURLOPT_HEADER, 0);
 					curl_exec($ch);
 					curl_close($ch);
+				}
+			}
+		}
+
+		if ($this->params->get('max'))
+		{
+			$recipients = (array) $this->params->get('maxrecipients');
+			foreach ($recipients as $recipient)
+			{
+				if (empty($recipient->recipient_id) || empty($recipient->recipient_type))
+				{
+					continue;
+				}
+
+				if (
+					(($target !== false) && ($recipient->target == $target)) or
+					(empty(trim($recipient->target)) && ($target === false))
+				)
+				{
+					MaxHelper::sendMessage(
+						(string) $this->params->get('maxtoken'),
+						(string) $recipient->recipient_type,
+						(string) $recipient->recipient_id,
+						$telegram
+					);
 				}
 			}
 		}

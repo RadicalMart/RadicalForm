@@ -42,7 +42,9 @@ class ButtonField extends FormField
 		$assets->getRegistry()->addExtensionRegistryFile('plg_system_radicalform');
 		$assets->usePreset('plg_system_radicalform.config');
 
-		return "<button onclick=\"\" id='" . $this->element['id'] . "' class=\"btn btn-secondary control-group\"><span class=\"icon-refresh\"></span>" . Text::_($this->element['value']) . "</button><div id=\"radicalformresult\"></div>";
+		$resultId = $this->element['resultid'] ?: 'radicalformresult';
+
+		return "<button onclick=\"\" id='" . $this->element['id'] . "' class=\"btn btn-secondary control-group\"><span class=\"icon-refresh\"></span>" . Text::_($this->element['value']) . "</button><div id=\"" . $resultId . "\"></div>";
 	}
 
 }

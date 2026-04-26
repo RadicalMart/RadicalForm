@@ -544,6 +544,59 @@
                         value="PLG_RADICALFORM_TELEGRAMCHECK_LABEL"
                 />
 
+                <field
+                        name="max"
+                        type="radio"
+                        label="PLG_RADICALFORM_MAX_LABEL"
+                        description="PLG_RADICALFORM_MAX_DESCRIPTION"
+                        class="btn-group btn-group-yesno"
+                        default="0"
+                >
+                    <option value="1">JON</option>
+                    <option value="0">JOFF</option>
+                </field>
+                <field
+                        name="maxtoken"
+                        type="textarea"
+                        label="PLG_RADICALFORM_MAX_TOKEN"
+                        description="PLG_RADICALFORM_MAX_TOKEN_DESCRIPTION"
+                        required="false"
+                        default=""
+                        size="20"
+                        class="input-xxlarge"
+                        readonly="false"
+                        disabled="false"
+                        showon="max:1"
+                        filter="raw">
+                </field>
+                <field name="maxrecipients" type="subform"
+                       multiple="true"
+                       label="PLG_RADICALFORM_MAX_RECIPIENTS_LABEL"
+                       description="PLG_RADICALFORM_MAX_RECIPIENTS_DESC"
+                       layout="joomla.form.field.subform.repeatable-table"
+                       showon="max:1"
+                       class="rf-max-recipients"
+                >
+                    <form>
+                        <field name="recipient_id" type="text" label="Recipient ID" class="w-100"/>
+                        <field name="recipient_type" type="list" label="Type" default="user_id" class="w-100">
+                            <option value="user_id">user_id</option>
+                            <option value="chat_id">chat_id</option>
+                        </field>
+                        <field name="username" type="text" label="Name" class="w-100"/>
+                        <field name="target" type="text" label="Target ID" class="w-100"/>
+                    </form>
+                </field>
+                <field
+                        name="checkmax"
+                        type="radicalform_button"
+                        id="radicalformcheckmax"
+                        resultid="radicalformmaxresult"
+                        label=" "
+                        showon="max:1"
+                        value="PLG_RADICALFORM_MAX_CHECK_LABEL"
+                />
+
 
                 <field
                         name="jivosite"
