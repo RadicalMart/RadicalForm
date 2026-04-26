@@ -491,7 +491,7 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 
 				if ($match === 1)
 				{
-					return true;
+					return $fieldName;
 				}
 
 				continue;
@@ -499,7 +499,7 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 
 			if ($this->containsMatch($fieldValue, $pattern))
 			{
-				return true;
+				return $fieldName;
 			}
 		}
 
@@ -571,10 +571,11 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 			foreach ($contentRules as $rule)
 			{
 				$rule = (array) $rule;
+				$fieldName = $this->matchesContentRule($payload, $rule);
 
-				if ($this->matchesContentRule($payload, $rule))
+				if ($fieldName !== false)
 				{
-					return 'content';
+					return 'content (' . $fieldName . ')';
 				}
 			}
 		}
