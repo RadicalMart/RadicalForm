@@ -173,8 +173,11 @@ return new class () implements ServiceProviderInterface {
 					}
 				}
 
-				// Prepare RadicalForm plugins settings
-				$this->prepareSettings($type);
+				if ($type !== 'uninstall')
+				{
+					// Prepare RadicalForm plugins settings
+					$this->prepareSettings($type);
+				}
 
 				return true;
 			}
@@ -417,13 +420,18 @@ return new class () implements ServiceProviderInterface {
 					$params['maxfile'] = (int) ($params['maxfile'] / 1048576);
 				}
 
-				// if we update from previous versions  -
+				// if we update from previous versions
 				if ($type == "update")
 				{
 					if (!isset($params['attachfiles']))
 					{
 						$params['attachfiles'] = 1;
 					}
+				}
+
+				if (!isset($params['uploadenabled']))
+				{
+					$params['uploadenabled'] = $type == "update" ? 1 : 0;
 				}
 
 				if (!isset($params['downloadpath']) || (trim($params['downloadpath']) == ""))

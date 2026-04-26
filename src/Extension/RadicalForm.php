@@ -642,6 +642,8 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 				'DangerClass'         => $this->params->get('dangerclass'),
 				'ErrorFile'           => $this->params->get('errorfile'),
 				'thisFilesWillBeSend' => Text::_('PLG_RADICALFORM_THIS_FILES_WILL_BE_SEND'),
+				'UploadDisabled'      => Text::_('PLG_RADICALFORM_UPLOAD_DISABLED'),
+				'UploadEnabled'       => $this->params->get('uploadenabled', 0),
 				'waitingForUpload'    => $this->params->get('waitingupload'),
 				'WaitMessage'         => $this->params->get('rfWaitMessage'),
 				'ErrorMax'            => Text::_('PLG_RADICALFORM_FILE_TO_LARGE_THAN_PHP_INI_ALLOWS'),
@@ -1459,6 +1461,11 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 
 		if (isset($get['file']) && $get['file'] == 1)
 		{
+			if (!$this->params->get('uploadenabled', 0))
+			{
+				$this->setResponse(['error' => Text::_('PLG_RADICALFORM_UPLOAD_DISABLED')]);
+			}
+
 			// Здесь нам передали файл. Что же, будем обрабатывать
 			$this->setResponse($this->processUploadedFiles($files, $uniq));
 		}
@@ -1526,7 +1533,7 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 		$url          = ((!empty($_SERVER['HTTPS'])) ? 'https' : 'http') . '://' . $_SERVER['HTTP_HOST'];
 		$downloadPath = $this->params->get('downloadpath');
 		$totalsize    = 0;
-		if (isset($input["needToSendFiles"]) && ($input["needToSendFiles"] == 1))
+		if ($this->params->get('uploadenabled', 0) && isset($input["needToSendFiles"]) && ($input["needToSendFiles"] == 1))
 		{
 			// просматриваем все подпапки нашей папки для выгрузки
 			$folders = Folder::folders($this->params->get('uploadstorage') . '/rf-' . $uniq);

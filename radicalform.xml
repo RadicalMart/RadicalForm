@@ -154,8 +154,8 @@
                         class="btn-group btn-group-yesno"
                         default="1"
                 >
-                    <option value="1">JON</option>
-                    <option value="0">JOFF</option>
+                    <option value="1">JYES</option>
+                    <option value="0">JNO</option>
                 </field>
                 <field
                         name="email"
@@ -312,10 +312,22 @@
             </fieldset>
             <fieldset name="forfiles" label="PLG_RADICALFORM_FILESPARAMS">
                 <field
+                        name="uploadenabled"
+                        type="radio"
+                        label="PLG_RADICALFORM_UPLOADENABLED_LABEL"
+                        description="PLG_RADICALFORM_UPLOADENABLED_DESCRIPTION"
+                        class="btn-group btn-group-yesno"
+                        default="0"
+                >
+                    <option value="1">JYES</option>
+                    <option value="0">JNO</option>
+                </field>
+                <field
                         name="storageind"
                         type="radicalform_storage"
                         id="storageindicator"
                         label=" "
+                        showon="uploadenabled:1"
                         value="PLG_RADICALFORM_TELEGRAMCHECK_LABEL"
                 />
                 <field
@@ -329,6 +341,7 @@
                         class="input-xxlarge"
                         readonly="false"
                         disabled="false"
+                        showon="uploadenabled:1"
                         filter="raw">
                 </field>
                 <field
@@ -338,6 +351,7 @@
                         description="PLG_RADICALFORM_ATTACHFILES_DESCRIPTION"
                         class="btn-group btn-group-yesno"
                         default="0"
+                        showon="uploadenabled:1"
                 >
                     <option value="1">JYES</option>
                     <option value="0">JNO</option>
@@ -353,7 +367,7 @@
                         class="input-small"
                         readonly="false"
                         disabled="false"
-                        showon="attachfiles:1"
+                        showon="uploadenabled:1[AND]attachfiles:1"
                         filter="">
                 </field>
                 <field
@@ -367,6 +381,7 @@
                         class="input-small"
                         readonly="false"
                         disabled="false"
+                        showon="uploadenabled:1"
                         filter="">
                 </field>
                 <field
@@ -380,6 +395,7 @@
                         class="input-small"
                         readonly="false"
                         disabled="false"
+                        showon="uploadenabled:1"
                         filter="">
                 </field>
                 <field
@@ -391,6 +407,7 @@
                         class="input-xxlarge"
                         readonly="false"
                         disabled="false"
+                        showon="uploadenabled:1"
                         filter="">
                 </field>
                 <field
@@ -404,6 +421,7 @@
                         class=""
                         readonly="false"
                         disabled="false"
+                        showon="uploadenabled:1"
                         filter="raw">
                 </field>
                 <field
@@ -416,6 +434,7 @@
                         class="input-small"
                         readonly="false"
                         disabled="false"
+                        showon="uploadenabled:1"
                         filter="raw">
                 </field>
 
@@ -429,6 +448,7 @@
                         default="#fbfbfb"
                         readonly="false"
                         disabled="false"
+                        showon="uploadenabled:1"
                         filter="raw">
                 </field>
                 <field
@@ -439,6 +459,7 @@
                         required="false"
                         default="#f44336"
                         readonly="false"
+                        showon="uploadenabled:1"
                         disabled="false"
                         filter="raw">
                 </field>

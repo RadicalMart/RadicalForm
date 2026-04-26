@@ -475,6 +475,14 @@ RadicalFormClass = function () {
             return;
         }
 
+        if (RadicalForm.UploadEnabled != 1) {
+            if (form.querySelector('.rf-filenames-list')) {
+                rf_filenames_list.innerHTML = "<div class='" + selfClass.error_file_classes.join(' ') + "'>" + RadicalForm.UploadDisabled + "</div>";
+            }
+            buttonPressed.value = "";
+            return;
+        }
+
         var clearFileError = function() {
             var el=rf_filenames_list.querySelector("." + selfClass.error_file_classes.join('.'));
 
