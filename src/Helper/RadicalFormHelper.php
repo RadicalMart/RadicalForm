@@ -32,7 +32,7 @@ class RadicalFormHelper
 
 		if (file_exists($file) && ($handle = fopen($file, 'r')) !== false)
 		{
-			while (($data = fgetcsv($handle, 200000, $delimiter)) !== false)
+			while (($data = fgetcsv($handle, 200000, $delimiter, '"', '\\')) !== false)
 			{
 				$a[] = $data;
 			}
