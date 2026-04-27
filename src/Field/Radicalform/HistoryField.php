@@ -16,10 +16,9 @@ namespace Joomla\Plugin\System\RadicalForm\Field\Radicalform;
 use Joomla\CMS\Factory;
 use Joomla\CMS\Form\FormField;
 use Joomla\CMS\Language\Text;
-use Joomla\CMS\Plugin\PluginHelper;
 use Joomla\CMS\Uri\Uri;
+use Joomla\Database\DatabaseInterface;
 use Joomla\Plugin\System\RadicalForm\Helper\RadicalFormHelper;
-use Joomla\Registry\Registry;
 
 class HistoryField extends FormField
 {
@@ -111,18 +110,7 @@ class HistoryField extends FormField
 		}
 		$data                 = array_reverse($data);
 		$cnt                  = count($data);
-		$plugin               = PluginHelper::getPlugin('system', 'logrotation');
-		$warningAboutRotation = "";
-		if ($plugin)
-		{
-			$pars          = new Registry($plugin->params);
-			$cache_timeout = (int) $pars->get('cachetimeout', 30);
-			$cache_timeout = 24 * 3600 * $cache_timeout;
-			$now           = time();
-			$last          = (int) $pars->get('lastrun', 0);
-
-			$warningAboutRotation = Text::sprintf("PLG_RADICALFORM_WARNING_ABOUT_ROTATION", (abs($cache_timeout - ($now - $last)) / (3600 * 24)));
-		}
+		$warningAboutRotation = $this->getLogRotationWarning();
 
 		if ($cnt)
 		{
@@ -351,5 +339,53 @@ class HistoryField extends FormField
 		$html = preg_replace('/(?<!a href=\'|\")(?<!src=\"|\')((http)+(s)?:\/\/[^<>\s]+)(?<![\.,:])/i', "<a href='$0' target='_blank'>$0</a>", $html);
 
 		return $html;
+	}
+
+	/**
+	 * Returns a warning about the next Joomla scheduled log rotation.
+	 *
+	 * @return  string
+	 *
+	 * @since   __DEPLOY_VERSION__
+	 */
+	private function getLogRotationWarning(): string
+	{
+		try
+		{
+			$db = Factory::getContainer()->get(DatabaseInterface::class);
+
+			$query = $db->getQuery(true)
+				->select($db->quoteName(['t.next_execution', 't.params']))
+				->from($db->quoteName('#__scheduler_tasks') . ' AS ' . $db->quoteName('t'))
+				->innerJoin(
+					$db->quoteName('#__extensions') . ' AS ' . $db->quoteName('e')
+					. ' ON ' . $db->quoteName('e.type') . ' = ' . $db->quote('plugin')
+					. ' AND ' . $db->quoteName('e.folder') . ' = ' . $db->quote('task')
+					. ' AND ' . $db->quoteName('e.element') . ' = ' . $db->quote('rotatelogs')
+					. ' AND ' . $db->quoteName('e.enabled') . ' = 1'
+				)
+				->where($db->quoteName('t.type') . ' = ' . $db->quote('rotation.logs'))
+				->where($db->quoteName('t.state') . ' = 1')
+				->where($db->quoteName('t.next_execution') . ' IS NOT NULL')
+				->order($db->quoteName('t.next_execution') . ' ASC');
+
+			$db->setQuery($query, 0, 1);
+			$task = $db->loadObject();
+		}
+		catch (\Throwable)
+		{
+			return '';
+		}
+
+		if (!$task)
+		{
+			return '';
+		}
+
+		$params     = json_decode($task->params, true);
+		$logsToKeep = max(1, (int) ($params['logstokeep'] ?? 1));
+		$daysLeft   = max(0, (int) floor((Factory::getDate($task->next_execution)->getTimestamp() - time()) / (3600 * 24)));
+
+		return Text::sprintf('PLG_RADICALFORM_WARNING_ABOUT_ROTATION', $daysLeft, $logsToKeep);
 	}
 }
