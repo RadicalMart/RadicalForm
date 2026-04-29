@@ -204,9 +204,9 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 		// Remove any trailing dots, as those aren't ever valid file names.
 		$file = rtrim($file, '.');
 
-		$regex = array('#(\.){2,}#', '#[^A-Za-z0-9\.\_\-]#', '#^\.#');
+		$regex = array('#\.{2,}#', '#[^A-Za-z0-9._-]#u', '#^\.#');
 
-		$repl = array('.', '', '');
+		$repl = array('.', '_', '');
 
 		return trim(preg_replace($regex, $repl, $file));
 	}
@@ -869,9 +869,15 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 						{
 							if (!file_exists($uploaddir . "/" . $key))
 							{
-								mkdir($uploaddir . "/" . $key); // создаем папку если ее нет для файлов
+								mkdir($uploaddir . "/" . $key); // создаем папку, если ее нет для файлов
 							}
 							$uploadedFileName = $this->makeSafe($lang->transliterate($file['name']));
+							if ($uploadedFileName === '')
+							{
+								$output["error"] = Text::_('PLG_RADICALFORM_ERROR_UPLOAD');
+								continue;
+							}
+
 							if (File::upload($file['tmp_name'], $uploaddir . "/" . $key . "/" . $uploadedFileName))
 							{
 								$output["name"] = $uploadedFileName;
