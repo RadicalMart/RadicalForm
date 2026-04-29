@@ -62,7 +62,7 @@
                         label="PLG_RADICALFORM_DANGER_CLASS"
                         description="PLG_RADICALFORM_DANGER_CLASS_DESCRIPTION"
                         required="false"
-                        default="uk-form-danger"
+                        default="uk-form-danger is-invalid"
                         size="10"
                         class="input-xxlarge"
                         readonly="false"
@@ -75,7 +75,7 @@
                         label="PLG_RADICALFORM_ERROR_FILE"
                         description="PLG_RADICALFORM_ERROR_FILE_DESCRIPTION"
                         required="false"
-                        default="uk-text-danger"
+                        default="uk-text-danger text-danger"
                         size="10"
                         class="input-xxlarge"
                         readonly="false"
@@ -114,8 +114,8 @@
                         description="PLG_RADICALFORM_RF_CALL_2_DESCRIPTION"
                         height="140"
                         filter="raw"
-                        default="alert(rfMessage);"
-                />
+	                        default="document.getElementById('rf-message-' + RadicalForm.RadicalFormClass.uniq)?.remove(); here.insertAdjacentHTML('afterend', '&lt;div id=&quot;rf-message-' + RadicalForm.RadicalFormClass.uniq + '&quot; class=&quot;mt-3&quot;&gt;&lt;/div&gt;'); Joomla.renderMessages({ message: [rfMessage] }, '#rf-message-' + RadicalForm.RadicalFormClass.uniq, false, 5000);"
+	                />
                 <field
                         name="rfCall_3"
                         editor="codemirror|none"

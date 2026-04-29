@@ -729,6 +729,8 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 				$this->getApplication()->setBody($body);
 			}
 		}
+
+		return true;
 	}
 
 	/**
