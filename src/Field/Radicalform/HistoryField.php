@@ -111,10 +111,11 @@ class HistoryField extends FormField
 		$data                 = array_reverse($data);
 		$cnt                  = count($data);
 		$warningAboutRotation = $this->getLogRotationWarning();
+		$pluginsInfo          = $this->getEnabledRadicalFormPluginsInfo();
 
 		if ($cnt)
 		{
-			$html = "<p class='firstEntry'>" . Text::_('PLG_RADICALFORM_HISTORY_SIZE') . "<strong>" . filesize($log_path . '/' . $page . 'plg_system_radicalform.php') . "</strong> " . Text::_('PLG_RADICALFORM_HISTORY_BYTE') . $warningAboutRotation . "</p>";
+			$html = "<p class='firstEntry'>" . Text::_('PLG_RADICALFORM_HISTORY_SIZE') . "<strong>" . filesize($log_path . '/' . $page . 'plg_system_radicalform.php') . "</strong> " . Text::_('PLG_RADICALFORM_HISTORY_BYTE') . $warningAboutRotation . $pluginsInfo . "</p>";
 			$html .= "<p class='historytable'><button class='btn btn-danger' id='historyclear'>" . Text::sprintf('PLG_RADICALFORM_HISTORY_CLEAR', $page . "plg_system_radicalform.php") .
 				"</button> <button class='btn btn-outline-danger' id='numberclear'>" . Text::_('PLG_RADICALFORM_HISTORY_NUMBER_CLEAR') .
 				"</button> <span class='pull-right float-end'><a href='index.php?option=com_ajax&plugin=radicalform&format=raw&group=system&admin=4&page=" . (($page == "") ? "0" : strstr($page, ".", true)) . "' class='btn btn-outline-primary' id='exportcsv'>" . Text::sprintf('PLG_RADICALFORM_EXPORT_CSV', $page . "plg_system_radicalform.php") .
@@ -263,7 +264,7 @@ class HistoryField extends FormField
 						{
 							$record = implode($params->glue, $record);
 						}
-						$itog .= Text::_($key) . ": <b>" . $record . "</b><br />";
+						$itog .= $this->getTranslatedFieldName((string) $key) . ": <b>" . $record . "</b><br />";
 					}
 
 					$jdate    = Factory::getDate($item[0]);
@@ -296,7 +297,7 @@ class HistoryField extends FormField
 		}
 		else
 		{
-			$html = "{$logFiles}<p class='firstEntry'>{$warningAboutRotation}</p>" . '<div class="historytable"><div class="alert alert-info  alert-dismissible show">' . Text::sprintf('PLG_RADICALFORM_HISTORY_EMPTY', $page . "plg_system_radicalform.php") . '</div></div>';
+			$html = "{$logFiles}<p class='firstEntry'>{$warningAboutRotation}{$pluginsInfo}</p>" . '<div class="historytable"><div class="alert alert-info  alert-dismissible show">' . Text::sprintf('PLG_RADICALFORM_HISTORY_EMPTY', $page . "plg_system_radicalform.php") . '</div></div>';
 		}
 
 		$html = preg_replace('/(?<!a href=\'|\")(?<!src=\"|\')((http)+(s)?:\/\/[^<>\s]+)(?<![\.,:])/i', "<a href='$0' target='_blank'>$0</a>", $html);
@@ -350,5 +351,84 @@ class HistoryField extends FormField
 		$daysLeft   = max(0, (int) floor((Factory::getDate($task->next_execution)->getTimestamp() - time()) / (3600 * 24)));
 
 		return Text::sprintf('PLG_RADICALFORM_WARNING_ABOUT_ROTATION', $daysLeft, $logsToKeep);
+	}
+
+	/**
+	 * Returns information about enabled RadicalForm plugins.
+	 *
+	 * @return  string
+	 *
+	 * @since   __DEPLOY_VERSION__
+	 */
+	private function getEnabledRadicalFormPluginsInfo(): string
+	{
+		try
+		{
+			$db = Factory::getContainer()->get(DatabaseInterface::class);
+
+			$query = $db->getQuery(true)
+				->select($db->quoteName(['name', 'element', 'manifest_cache']))
+				->from($db->quoteName('#__extensions'))
+				->where($db->quoteName('type') . ' = ' . $db->quote('plugin'))
+				->where($db->quoteName('folder') . ' = ' . $db->quote('radicalform'))
+				->where($db->quoteName('enabled') . ' = 1')
+				->order($db->quoteName('ordering') . ' ASC');
+
+			$db->setQuery($query);
+			$plugins = $db->loadObjectList();
+		}
+		catch (\Throwable)
+		{
+			return '';
+		}
+
+		if (!$plugins)
+		{
+			return '';
+		}
+
+		$names = [];
+		foreach ($plugins as $plugin)
+		{
+			$language = Factory::getApplication()->getLanguage();
+			$language->load('plg_radicalform_' . $plugin->element, JPATH_ADMINISTRATOR);
+			$language->load('plg_radicalform_' . $plugin->element . '.sys', JPATH_ADMINISTRATOR);
+			$language->load('plg_radicalform_' . $plugin->element, JPATH_SITE);
+			$language->load('plg_radicalform_' . $plugin->element . '.sys', JPATH_SITE);
+
+			$manifest = json_decode($plugin->manifest_cache, true);
+			$name     = $manifest['name'] ?? $plugin->name ?? $plugin->element;
+			$name     = $language->hasKey($name) ? Text::_($name) : $plugin->element;
+
+			$names[] = htmlspecialchars($name, ENT_QUOTES, 'UTF-8');
+		}
+
+		return '<br>' . Text::_('PLG_RADICALFORM_ENABLED_PLUGINS') . ' <strong>' . implode('</strong>, <strong>', $names) . '</strong>';
+	}
+
+	/**
+	 * Returns translated form field name.
+	 *
+	 * @param   string  $key  Field key
+	 *
+	 * @return  string
+	 *
+	 * @since   __DEPLOY_VERSION__
+	 */
+	private function getTranslatedFieldName(string $key): string
+	{
+		$language = Factory::getApplication()->getLanguage();
+		$language->load('override', JPATH_ADMINISTRATOR);
+		$language->load('override', JPATH_SITE);
+
+		foreach ([$key, strtoupper($key)] as $constant)
+		{
+			if ($language->hasKey($constant))
+			{
+				return htmlspecialchars(Text::_($constant), ENT_QUOTES, 'UTF-8');
+			}
+		}
+
+		return htmlspecialchars($key, ENT_QUOTES, 'UTF-8');
 	}
 }
