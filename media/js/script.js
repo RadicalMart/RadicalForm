@@ -38,6 +38,38 @@ RadicalFormClass = function () {
         }
     };
 
+    this.getServerErrorFields = function(response) {
+        if (!response || !response.data) {
+            return [];
+        }
+
+        if (Array.isArray(response.data.fields)) {
+            return response.data.fields;
+        }
+
+        if (Array.isArray(response.data) && response.data[0] && Array.isArray(response.data[0].fields)) {
+            return response.data[0].fields;
+        }
+
+        return [];
+    };
+
+    this.highlightFields = function(form, fields) {
+        if (!Array.isArray(fields)) {
+            return;
+        }
+
+        fields.forEach(function(fieldName) {
+            [].forEach.call(form.querySelectorAll('[name]'), function(el) {
+                if (el.name === fieldName) {
+                    selfClass.danger_classes.forEach(function(item) {
+                        el.classList.add(item);
+                    });
+                }
+            });
+        });
+    };
+
     if (RadicalForm.KeepAlive != 0) {
         window.setInterval(function() {
 
@@ -353,12 +385,6 @@ RadicalFormClass = function () {
                 if (this.readyState === 4 && this.status === 200) {
                     buttonPressed.innerHTML=prevousButtonText;
                     buttonPressed.disabled=false;
-                    if (form.querySelector(".rf-filenames-list")) {
-                        form.querySelector(".rf-filenames-list").innerHTML="";
-                    }
-
-                    //clear all fields of the form
-                    selfClass.clearForm(form);
 
                     var response = false;
                     try {
@@ -374,6 +400,12 @@ RadicalFormClass = function () {
                     }
                     if (response.success) {
                         if (response.data[0][0]==="ok") {
+                            if (form.querySelector(".rf-filenames-list")) {
+                                form.querySelector(".rf-filenames-list").innerHTML="";
+                            }
+
+                            //clear all fields of the form
+                            selfClass.clearForm(form);
 
                             if (RadicalForm.Jivosite === "1") {
                                 try {
@@ -434,6 +466,7 @@ RadicalFormClass = function () {
 
                     } else {
                         try {
+                            selfClass.highlightFields(form, selfClass.getServerErrorFields(response));
                             rfCall_9((response.message),buttonPressed);
                         } catch (e) {
                             console.error('Radical Form JS Code: ', e);

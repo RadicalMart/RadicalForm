@@ -276,9 +276,10 @@ class HistoryField extends FormField
 						$target .
 						$formid .
 						'<td><a href="http://whois.domaintools.com/' . $item[1] . '" target="_blank">' . $item[1] . '</a></td>';
-					if (isset($item[3]) && $item[3] == "WARNING")
+					if (isset($item[3]) && in_array($item[3], ["WARNING", "ERROR"], true))
 					{
 						$warningTitle   = isset($json["rfAntiSpam"]) ? Text::_('PLG_RADICALFORM_ANTISPAM') . ': ' . $json["rfAntiSpam"] : $item[3];
+						$warningTitle   = $item[3] === "ERROR" && isset($json["message"]) ? $item[3] . ': ' . $json["message"] : $warningTitle;
 						$warningContent = ($json_result ? $itog : htmlspecialchars($item[2])) . $extrainfo;
 						$html           .= '<td style="max-width: 700px; overflow: hidden; color: #9f2620;"><details><summary style="cursor: pointer; color: #9f2620;">' . htmlspecialchars($warningTitle) . '</summary><div class="rfMarginTop">' . $warningContent . '</div></details></td>' .
 							'</tr>';
@@ -286,44 +287,6 @@ class HistoryField extends FormField
 					else
 					{
 						$html .= '<td style="max-width: 700px; overflow: hidden;">' . ($json_result ? '' . $itog . '' : htmlspecialchars($item[2])) . $extrainfo . '</td>' .
-							'</tr>';
-					}
-				}
-				else
-				{
-					// old log file format
-					$json        = json_decode($item[3], true);
-					$json_result = json_last_error() === JSON_ERROR_NONE;
-
-					$itog = "";
-					if (!$params->hiddeninfo)
-					{
-						unset($json["reffer"]);
-						unset($json["resolution"]);
-						unset($json["url"]);
-					}
-					foreach ($json as $key => $record)
-					{
-						if (is_array($record))
-						{
-							$record = implode($params->glue, $record);
-						}
-						$itog .= Text::_($key) . ": <b>" . $record . "</b><br />";
-					}
-					$html .= '<tr class="row' . ($i % 2) . '">' .
-						'<td class="nowrap">' . $item[0] . '</td>' .
-						'<td>' . $item[1] . '</td>' .
-						'<td><a href="http://whois.domaintools.com/' . $item[2] . '" target="_blank">' . $item[2] . '</a></td>';
-					if (isset($item[4]) && $item[4] == "WARNING")
-					{
-						$warningTitle   = isset($json["rfAntiSpam"]) ? Text::_('PLG_RADICALFORM_ANTISPAM') . ': ' . $json["rfAntiSpam"] : $item[4];
-						$warningContent = $json_result ? $itog : htmlspecialchars($item[3]);
-						$html           .= '<td style="max-width: 700px; overflow: hidden; color: #9f2620;"><details><summary style="cursor: pointer; color: #9f2620;">' . htmlspecialchars($warningTitle) . '</summary><div class="rfMarginTop">' . $warningContent . '</div></details></td>' .
-							'</tr>';
-					}
-					else
-					{
-						$html .= '<td style="max-width: 700px; overflow: hidden;">' . ($json_result ? '' . $itog . '' : htmlspecialchars($item[3])) . '</td>' .
 							'</tr>';
 					}
 				}

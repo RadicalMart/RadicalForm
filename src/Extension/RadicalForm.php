@@ -31,6 +31,7 @@ use Joomla\Database\DatabaseAwareTrait;
 use Joomla\Event\SubscriberInterface;
 use Joomla\Filesystem\File;
 use Joomla\Filesystem\Folder;
+use Joomla\Plugin\System\RadicalForm\Event\BeforeProcessRadicalFormEvent;
 use Joomla\Plugin\System\RadicalForm\Helper\MaxHelper;
 use Joomla\Plugin\System\RadicalForm\Helper\RadicalFormHelper;
 use Joomla\String\StringHelper;
@@ -76,6 +77,13 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 	protected int|float $maxStorageSize;
 
 	/**
+	 * Event dispatcher.
+	 *
+	 * @var DispatcherInterface
+	 */
+	private DispatcherInterface $dispatcher;
+
+	/**
 	 * Returns an array of events this subscriber will listen to.
 	 *
 	 * @return  array
@@ -105,6 +113,7 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 
 		$this->setApplication($app);
 		$this->setDatabase($db);
+		$this->dispatcher = $dispatcher;
 
 		$this->maxDirSize     = $this->params->get('maxfile', 20) * 1048576;
 		$this->maxStorageSize = $this->params->get('maxstorage', 1000) * 1048576;
@@ -287,6 +296,74 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 		}
 
 		return Text::_($message);
+	}
+
+	private function normalizeBeforeSendRejection($result)
+	{
+		if (is_object($result))
+		{
+			$result = (array) $result;
+		}
+
+		if (!is_array($result))
+		{
+			return null;
+		}
+
+		if (!array_key_exists('send', $result))
+		{
+			$isList = $result === [] || array_keys($result) === range(0, count($result) - 1);
+
+			if ($isList)
+			{
+				foreach ($result as $item)
+				{
+					$rejection = $this->normalizeBeforeSendRejection($item);
+
+					if ($rejection !== null)
+					{
+						return $rejection;
+					}
+				}
+			}
+
+			return null;
+		}
+
+		if ($result['send'] !== false)
+		{
+			return null;
+		}
+
+		$message = isset($result['message']) ? trim((string) $result['message']) : '';
+
+		if ($message === '')
+		{
+			$message = 'PLG_RADICALFORM_PLUGIN_SEND_REJECTED';
+		}
+
+		$fields = [];
+
+		if (isset($result['field']) && is_string($result['field']) && trim($result['field']) !== '')
+		{
+			$fields[] = trim($result['field']);
+		}
+
+		if (isset($result['fields']) && is_array($result['fields']))
+		{
+			foreach ($result['fields'] as $field)
+			{
+				if (is_string($field) && trim($field) !== '')
+				{
+					$fields[] = trim($field);
+				}
+			}
+		}
+
+		return [
+			'message' => Text::_($message),
+			'fields'  => array_values(array_unique($fields))
+		];
 	}
 
 	private function splitAntiSpamLines($text)
@@ -1573,16 +1650,53 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 			}
 		}
 
-		// вызов внешнего плагина
-		PluginHelper::importPlugin('radicalform');
-
 		try
 		{
-			$this->getApplication()->triggerEvent('onBeforeSendRadicalForm', array($this->clearInput($input), &$input, $params));
+			// вызов внешнего плагина
+			PluginHelper::importPlugin('radicalform');
+
+			$pluginResults = $this->getApplication()->triggerEvent('onBeforeSendRadicalForm', array($this->clearInput($input), &$input, $params));
+
+			foreach ((array) $pluginResults as $pluginResult)
+			{
+				$rejection = $this->normalizeBeforeSendRejection($pluginResult);
+
+				if ($rejection !== null)
+				{
+					$this->setErrorResponse($rejection['message'], ['fields' => $rejection['fields']]);
+				}
+			}
+
+			$beforeProcessEvent = new BeforeProcessRadicalFormEvent('onBeforeProcessRadicalForm', [
+				'clearInput' => $this->clearInput($input),
+				'input'      => &$input,
+				'params'     => $params
+			]);
+
+			$this->dispatcher->dispatch('onBeforeProcessRadicalForm', $beforeProcessEvent);
+
+			foreach ((array) ($beforeProcessEvent['result'] ?? []) as $pluginResult)
+			{
+				$rejection = $this->normalizeBeforeSendRejection($pluginResult);
+
+				if ($rejection !== null)
+				{
+					$this->setErrorResponse($rejection['message'], ['fields' => $rejection['fields']]);
+				}
+			}
 		}
 		catch (\Throwable $e)
 		{
-			// TODO лог
+			$entry = [
+				'message' => 'External RadicalForm plugin error',
+				'error'   => $e->getMessage(),
+				'file'    => $e->getFile(),
+				'line'    => $e->getLine(),
+				'form'    => isset($input['rfFormID']) ? (string) $input['rfFormID'] : '',
+				'target'  => isset($input['rfTarget']) ? (string) $input['rfTarget'] : ''
+			];
+
+			Log::add(json_encode($entry), Log::ERROR, 'plg_system_radicalform');
 		}
 
 		unset($input["uniq"]);
@@ -1886,6 +2000,13 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 
 		Factory::getApplication()->setHeader('Content-Type', 'application/json', true);
 		echo new JsonResponse($data);
+		Factory::getApplication()->close(200);
+	}
+
+	protected function setErrorResponse($message, array $data = [])
+	{
+		Factory::getApplication()->setHeader('Content-Type', 'application/json', true);
+		echo new JsonResponse($data, $message, true);
 		Factory::getApplication()->close(200);
 	}
 }
