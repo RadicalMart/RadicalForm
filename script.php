@@ -246,7 +246,7 @@ return new class () implements ServiceProviderInterface {
 			 *
 			 * @since  __DEPLOY_VERSION__
 			 */
-			public function parseLayouts(SimpleXMLElement $element = null, Installer $installer = null): bool
+				public function parseLayouts(?SimpleXMLElement $element = null, ?Installer $installer = null): bool
 			{
 				if (!$element || !count($element->children()))
 				{
@@ -297,7 +297,7 @@ return new class () implements ServiceProviderInterface {
 			 *
 			 * @since  __DEPLOY_VERSION__
 			 */
-			protected function removeLayouts(SimpleXMLElement $element = null): bool
+				protected function removeLayouts(?SimpleXMLElement $element = null): bool
 			{
 				if (!$element || !count($element->children()))
 				{

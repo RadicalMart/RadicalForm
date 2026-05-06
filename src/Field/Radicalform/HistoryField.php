@@ -32,6 +32,20 @@ class HistoryField extends FormField
 	protected $type = 'radicalform_history';
 
 	/**
+	 * Method to render the field without the default Joomla label column.
+	 *
+	 * @param   array  $options  Options to be passed into the rendering of the field
+	 *
+	 * @return  string  The field input markup
+	 *
+	 * @since   __DEPLOY_VERSION__
+	 */
+	public function renderField($options = [])
+	{
+		return '<div class="radicalform-history">' . $this->getInput() . '</div>';
+	}
+
+	/**
 	 * Method to get the field input markup.
 	 *
 	 * @return  string  The field input markup.
@@ -112,6 +126,7 @@ class HistoryField extends FormField
 		$cnt                  = count($data);
 		$warningAboutRotation = $this->getLogRotationWarning();
 		$pluginsInfo          = $this->getEnabledRadicalFormPluginsInfo();
+		$showHiddenInfo       = isset($params->hiddeninfo) && $params->hiddeninfo;
 
 		if ($cnt)
 		{
@@ -136,6 +151,10 @@ class HistoryField extends FormField
 			}
 			$html .= '<th width="">' . Text::_('PLG_RADICALFORM_HISTORY_IP') . '</th>';
 			$html .= '<th>' . Text::_('PLG_RADICALFORM_HISTORY_MESSAGE') . '</th>';
+			if ($showHiddenInfo)
+			{
+				$html .= '<th>' . Text::_('PLG_RADICALFORM_HISTORY_EXTRA') . '</th>';
+			}
 			$html .= '</tr></thead><tbody>';
 			foreach ($data as $i => $item)
 			{
@@ -146,16 +165,17 @@ class HistoryField extends FormField
 					$json_result = json_last_error() === JSON_ERROR_NONE;
 
 					$itog      = "";
-					$extrainfo = "<div class='rfMarginTop muted small'>";
-					if ($params->hiddeninfo)
+					$extrainfo = "";
+					if ($showHiddenInfo)
 					{
+						$extrainfo = "<div class='muted small'>";
 						if (isset($json["url"]))
 						{
-							$extrainfo .= Text::_('PLG_RADICALFORM_URL') . '<b>' . $json["url"] . "</b><br>";
+							$extrainfo .= Text::_('PLG_RADICALFORM_URL') . '<b>' . $this->getHistoryLink($json["url"], null, 'rf-history-file-link') . "</b><br>";
 						}
 						if (isset($json["reffer"]))
 						{
-							$extrainfo .= Text::_('PLG_RADICALFORM_REFFER') . '<b>' . $json["reffer"] . "</b><br>";
+							$extrainfo .= Text::_('PLG_RADICALFORM_REFFER') . '<b>' . $this->getHistoryLink($json["reffer"], null, 'rf-history-file-link') . "</b><br>";
 						}
 						if (isset($json["resolution"]))
 						{
@@ -177,9 +197,8 @@ class HistoryField extends FormField
 						{
 							$extrainfo .= Text::sprintf('PLG_RADICALFORM_FORM_DURATION', $json["rf-duration"]);
 						}
-
+						$extrainfo .= "</div>";
 					}
-					$extrainfo .= "</div>";
 					if (isset($json["url"]))
 					{
 						unset($json["url"]);
@@ -260,10 +279,7 @@ class HistoryField extends FormField
 
 					foreach ($json as $key => $record)
 					{
-						if (is_array($record))
-						{
-							$record = implode($params->glue, $record);
-						}
+						$record = $this->formatHistoryRecord((string) $record);
 						$itog .= $this->getTranslatedFieldName((string) $key) . ": <b>" . $record . "</b><br />";
 					}
 
@@ -281,13 +297,15 @@ class HistoryField extends FormField
 					{
 						$warningTitle   = isset($json["rfAntiSpam"]) ? Text::_('PLG_RADICALFORM_ANTISPAM') . ': ' . $json["rfAntiSpam"] : $item[3];
 						$warningTitle   = $item[3] === "ERROR" && isset($json["message"]) ? $item[3] . ': ' . $json["message"] : $warningTitle;
-						$warningContent = ($json_result ? $itog : htmlspecialchars($item[2])) . $extrainfo;
-						$html           .= '<td style="max-width: 700px; overflow: hidden; color: #9f2620;"><details><summary style="cursor: pointer; color: #9f2620;">' . htmlspecialchars($warningTitle) . '</summary><div class="rfMarginTop">' . $warningContent . '</div></details></td>' .
+						$warningContent = $json_result ? $itog : htmlspecialchars($item[2]);
+						$html           .= '<td style="max-width: 500px; overflow: hidden; color: #9f2620;"><details><summary style="cursor: pointer; color: #9f2620;">' . htmlspecialchars($warningTitle) . '</summary><div class="rfMarginTop">' . $warningContent . '</div></details></td>' .
+							($showHiddenInfo ? '<td style="max-width: 500px; overflow: hidden;">' . $extrainfo . '</td>' : '') .
 							'</tr>';
 					}
 					else
 					{
-						$html .= '<td style="max-width: 700px; overflow: hidden;">' . ($json_result ? '' . $itog . '' : htmlspecialchars($item[2])) . $extrainfo . '</td>' .
+						$html .= '<td style="max-width: 500px; overflow: hidden;">' . ($json_result ? '' . $itog . '' : htmlspecialchars($item[2])) . '</td>' .
+							($showHiddenInfo ? '<td style="max-width: 500px; overflow: hidden;">' . $extrainfo . '</td>' : '') .
 							'</tr>';
 					}
 				}
@@ -300,9 +318,52 @@ class HistoryField extends FormField
 			$html = "{$logFiles}<p class='firstEntry'>{$warningAboutRotation}{$pluginsInfo}</p>" . '<div class="historytable"><div class="alert alert-info  alert-dismissible show">' . Text::sprintf('PLG_RADICALFORM_HISTORY_EMPTY', $page . "plg_system_radicalform.php") . '</div></div>';
 		}
 
-		$html = preg_replace('/(?<!a href=\'|\")(?<!src=\"|\')((http)+(s)?:\/\/[^<>\s]+)(?<![\.,:])/i', "<a href='$0' target='_blank'>$0</a>", $html);
-
 		return $html;
+	}
+
+	/**
+	 * Formats URLs in a history field value for compact display.
+	 *
+	 * @param   string  $record  Field value
+	 *
+	 * @return  string  Formatted field value
+	 *
+	 * @since   __DEPLOY_VERSION__
+	 */
+	private function formatHistoryRecord(string $record): string
+	{
+		return preg_replace_callback(
+			'/https?:\/\/[^\s<>"\']+/i',
+			function (array $matches): string {
+				$url   = rtrim($matches[0], '.,:;');
+				$trail = substr($matches[0], strlen($url));
+				$path  = parse_url($url, PHP_URL_PATH);
+				$name  = $path ? basename($path) : '';
+				$label = $name && strpos($name, '.') !== false ? $name : $url;
+
+				return $this->getHistoryLink($url, $label, 'rf-history-file-link') . $trail;
+			},
+			$record
+		);
+	}
+
+	/**
+	 * Returns a safe link for the history table.
+	 *
+	 * @param   string       $url    Link URL
+	 * @param   string|null  $label  Optional link label
+	 * @param   string       $class  Optional link class
+	 *
+	 * @return  string  Link markup
+	 *
+	 * @since   __DEPLOY_VERSION__
+	 */
+	private function getHistoryLink(string $url, ?string $label = null, string $class = ''): string
+	{
+		$label = $label ?? $url;
+		$class = $class ? ' class="' . htmlspecialchars($class, ENT_QUOTES, 'UTF-8') . '"' : '';
+
+		return '<a href="' . htmlspecialchars($url, ENT_QUOTES, 'UTF-8') . '" target="_blank"' . $class . '>' . htmlspecialchars($label, ENT_QUOTES, 'UTF-8') . '</a>';
 	}
 
 	/**

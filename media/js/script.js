@@ -15,7 +15,10 @@ RadicalFormClass = function () {
      * get uniq id for upload a file.
      * @type {number}
      */
-    this.uniq = (new Date).getTime() + Math.floor(Math.random() * 100);
+    this.refreshUniq = function() {
+        selfClass.uniq = (new Date).getTime() + Math.floor(Math.random() * 100);
+    };
+    this.refreshUniq();
 
     /**
      *
@@ -403,6 +406,10 @@ RadicalFormClass = function () {
                             if (form.querySelector(".rf-filenames-list")) {
                                 form.querySelector(".rf-filenames-list").innerHTML="";
                             }
+                            if (form.querySelector("input[name=needToSendFiles]")) {
+                                form.querySelector("input[name=needToSendFiles]").remove();
+                            }
+                            selfClass.refreshUniq();
 
                             //clear all fields of the form
                             selfClass.clearForm(form);

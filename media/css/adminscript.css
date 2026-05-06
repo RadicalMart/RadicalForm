@@ -27,11 +27,20 @@
 }
 
 .historytable {
-    max-width: 1240px;
+    max-width: 1440px;
 }
 
 .historytable details {
     margin: 0;
+}
+
+.radicalform-history .rf-history-file-link {
+    display: inline-block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: bottom;
+    white-space: nowrap;
 }
 
 .firstEntry strong {
