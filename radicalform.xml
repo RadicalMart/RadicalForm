@@ -16,7 +16,7 @@
     <copyright>Copyright (C) 2026 Progreccor. All rights reserved.</copyright>
     <license>GNU General Public License version 2 or later;</license>
     <version>4.2.0</version>
-    <creationDate>2026-05-05</creationDate>
+    <creationDate>2026-05-07</creationDate>
     <description>PLG_RADICALFORM_DESC</description>
     <scriptfile>script.php</scriptfile>
     <namespace path="src">Joomla\Plugin\System\RadicalForm</namespace>
@@ -802,7 +802,6 @@
                 <field name="note22" type="note" class="alert alert-info input-xxlarge hidden" close="true"
                        label="PLG_RADICALFORM_SHOWTARGET_DONTFORGET"
                        description="PLG_RADICALFORM_SHOWTARGET_DONTFORGET_DESCRIPTION"/>
-                <field type="spacer" name="myspacer3" hr="true"/>
                 <field
                         name="historytable"
                         type="radicalform_history"

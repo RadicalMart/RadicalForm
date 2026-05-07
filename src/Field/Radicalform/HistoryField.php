@@ -66,6 +66,10 @@ class HistoryField extends FormField
 		{
 			unset($output['page']);
 		}
+		if (isset($output['log']))
+		{
+			unset($output['log']);
+		}
 		$currentURL = $http["path"] . '?' . http_build_query($output);
 
 
@@ -74,7 +78,8 @@ class HistoryField extends FormField
 
 		$log_path = str_replace('\\', '/', $app->get('log_path'));
 
-		$page = '';
+		$page       = '';
+		$pageNumber = '0';
 		if (isset($get['page']))
 		{
 			if ($get['page'] == "0")
@@ -85,37 +90,37 @@ class HistoryField extends FormField
 			{
 				$page = $get['page'] . ".";
 			}
+			$pageNumber = (string) $get['page'];
 		}
+
+		$logType       = $this->getHistoryLogType($get);
+		$logFileName   = $this->getHistoryLogFileName($logType, $page);
+		$logLabel      = $this->getHistoryLogLabel($logType, $pageNumber);
 
 		$logFiles = '<ul class="nav nav-tabs historytable">';
-		if ($page)
+		foreach ($this->getHistoryLogTabs($log_path) as $logTab)
 		{
-			$logFiles .= " <li class='nav-item'><a href='{$currentURL}&page=0#attrib-list' class='nav-link' >plg_system_radicalform.php</a> </li>";
-		}
-		else
-		{
-			$logFiles .= "<li class='nav-item active'><a  class='nav-link active' aria-current='page' >plg_system_radicalform.php</a></li> ";
-		}
-
-		foreach (glob($log_path . "/*.plg_system_radicalform.php") as $filename)
-		{
-			$currentNumber = strstr(pathinfo($filename, PATHINFO_BASENAME), ".", true);
-			if ($currentNumber == $page)
+			if ($logTab['log'] === $logType && $logTab['page'] === $pageNumber)
 			{
-				$logFiles .= "<li class='nav-item active'><a  class='nav-link active' aria-current='page' >" . pathinfo($filename, PATHINFO_BASENAME) . "</a></li> ";
+				$logFiles .= "<li class='nav-item active'><a  class='nav-link active' aria-current='page' >" . htmlspecialchars($logTab['label'], ENT_QUOTES, 'UTF-8') . "</a></li> ";
 			}
 			else
 			{
-				$logFiles .= "<li class='nav-item'><a href='{$currentURL}&page={$currentNumber}#attrib-list' class='nav-link' >" . pathinfo($filename, PATHINFO_BASENAME) . "</a></li> ";
+				$logFiles .= "<li class='nav-item'><a href='{$currentURL}&page={$logTab['page']}&log={$logTab['log']}#attrib-list' class='nav-link' >" . htmlspecialchars($logTab['label'], ENT_QUOTES, 'UTF-8') . "</a></li> ";
 			}
 		}
 		$logFiles .= '</ul>';
 
-		$data = RadicalFormHelper::getCSV($log_path . '/' . $page . 'plg_system_radicalform.php', "\t");
+		$data = RadicalFormHelper::getCSV($log_path . '/' . $logFileName, "\t");
 		if (count($data) > 0)
 		{
 			for ($i = 0; $i < 6; $i++)
 			{
+				if (!isset($data[$i]))
+				{
+					continue;
+				}
+
 				if (count($data[$i]) < 4 || $data[$i][0][0] == '#')
 				{
 					unset($data[$i]);
@@ -130,10 +135,15 @@ class HistoryField extends FormField
 
 		if ($cnt)
 		{
-			$html = "<p class='firstEntry'>" . Text::_('PLG_RADICALFORM_HISTORY_SIZE') . "<strong>" . filesize($log_path . '/' . $page . 'plg_system_radicalform.php') . "</strong> " . Text::_('PLG_RADICALFORM_HISTORY_BYTE') . $warningAboutRotation . $pluginsInfo . "</p>";
-			$html .= "<p class='historytable'><button class='btn btn-danger' id='historyclear'>" . Text::sprintf('PLG_RADICALFORM_HISTORY_CLEAR', $page . "plg_system_radicalform.php") .
-				"</button> <button class='btn btn-outline-danger' id='numberclear'>" . Text::_('PLG_RADICALFORM_HISTORY_NUMBER_CLEAR') .
-				"</button> <span class='pull-right float-end'><a href='index.php?option=com_ajax&plugin=radicalform&format=raw&group=system&admin=4&page=" . (($page == "") ? "0" : strstr($page, ".", true)) . "' class='btn btn-outline-primary' id='exportcsv'>" . Text::sprintf('PLG_RADICALFORM_EXPORT_CSV', $page . "plg_system_radicalform.php") .
+			$logSizeLabel = $logType === 'spam' ? Text::_('PLG_RADICALFORM_SPAM_HISTORY_SIZE') : Text::_('PLG_RADICALFORM_HISTORY_SIZE');
+			$html = "<p class='firstEntry'>" . $logSizeLabel . "<strong>" . filesize($log_path . '/' . $logFileName) . "</strong> " . Text::_('PLG_RADICALFORM_HISTORY_BYTE') . $warningAboutRotation . $pluginsInfo . "</p>";
+			$html .= "<p class='historytable'><button class='btn btn-danger' id='historyclear'>" . Text::sprintf('PLG_RADICALFORM_HISTORY_CLEAR', $logLabel) .
+				"</button>";
+			if ($logType !== 'spam')
+			{
+				$html .= " <button class='btn btn-outline-danger' id='numberclear'>" . Text::_('PLG_RADICALFORM_HISTORY_NUMBER_CLEAR') . "</button>";
+			}
+			$html .= " <span class='pull-right float-end'><a href='index.php?option=com_ajax&plugin=radicalform&format=raw&group=system&admin=4&page={$pageNumber}&log={$logType}' class='btn btn-outline-primary exportcsv'>" . Text::sprintf('PLG_RADICALFORM_EXPORT_CSV', $logLabel) .
 				"</a></span></p>";
 			$html .= "<br><br>" . $logFiles;
 
@@ -227,8 +237,8 @@ class HistoryField extends FormField
 					{
 						unset($json["rfUserAgent"]);
 					}
-					$latestNumber = "";
-					if (isset($json["rfLatestNumber"]))
+					$latestNumber = $logType === 'spam' ? $i + 1 : "";
+					if ($logType !== 'spam' && isset($json["rfLatestNumber"]))
 					{
 						$latestNumber = $json["rfLatestNumber"];
 						unset($json["rfLatestNumber"]);
@@ -315,7 +325,7 @@ class HistoryField extends FormField
 		}
 		else
 		{
-			$html = "{$logFiles}<p class='firstEntry'>{$warningAboutRotation}{$pluginsInfo}</p>" . '<div class="historytable"><div class="alert alert-info  alert-dismissible show">' . Text::sprintf('PLG_RADICALFORM_HISTORY_EMPTY', $page . "plg_system_radicalform.php") . '</div></div>';
+			$html = "{$logFiles}<p class='firstEntry'>{$warningAboutRotation}{$pluginsInfo}</p>" . '<div class="historytable"><div class="alert alert-info  alert-dismissible show">' . Text::sprintf('PLG_RADICALFORM_HISTORY_EMPTY', $logLabel) . '</div></div>';
 		}
 
 		return $html;
@@ -345,6 +355,76 @@ class HistoryField extends FormField
 			},
 			$record
 		);
+	}
+
+	private function getHistoryLogType(array $get): string
+	{
+		return isset($get['log']) && $get['log'] === 'spam' ? 'spam' : 'messages';
+	}
+
+	private function getHistoryLogFileName(string $logType, string $page): string
+	{
+		$file = $logType === 'spam' ? 'plg_system_radicalform_spam.php' : 'plg_system_radicalform.php';
+
+		return $page . $file;
+	}
+
+	private function getHistoryLogLabel(string $logType, string $page): string
+	{
+		$label = $logType === 'spam' ? Text::_('PLG_RADICALFORM_LOG_SPAM') : Text::_('PLG_RADICALFORM_LOG_MESSAGES');
+
+		return $page === '0' ? $label : $label . ' #' . $page;
+	}
+
+	private function getHistoryLogTabs(string $logPath): array
+	{
+		$tabs = [
+			[
+				'log'   => 'messages',
+				'page'  => '0',
+				'label' => $this->getHistoryLogLabel('messages', '0')
+			]
+		];
+
+		foreach (['messages', 'spam'] as $logType)
+		{
+			$baseFile = $this->getHistoryLogFileName($logType, '');
+			if ($logType === 'spam' && file_exists($logPath . '/' . $baseFile))
+			{
+				$tabs[] = [
+					'log'   => 'spam',
+					'page'  => '0',
+					'label' => $this->getHistoryLogLabel('spam', '0')
+				];
+			}
+
+			foreach (glob($logPath . '/*.' . $baseFile) as $filename)
+			{
+				$page = strstr(pathinfo($filename, PATHINFO_BASENAME), '.', true);
+
+				if ($page === false || $page === '')
+				{
+					continue;
+				}
+
+				$tabs[] = [
+					'log'   => $logType,
+					'page'  => $page,
+					'label' => $this->getHistoryLogLabel($logType, $page)
+				];
+			}
+		}
+
+		usort($tabs, function (array $a, array $b): int {
+			if ($a['log'] !== $b['log'])
+			{
+				return $a['log'] === 'messages' ? -1 : 1;
+			}
+
+			return (int) $a['page'] <=> (int) $b['page'];
+		});
+
+		return $tabs;
 	}
 
 	/**

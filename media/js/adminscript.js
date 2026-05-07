@@ -34,7 +34,8 @@ ready(function () {
     }
 
     var currentGetParams,
-        page;
+        page,
+        log;
     currentGetParams = getUrlParams(location.search);
 
     var historyClear = document.querySelector("#historyclear");
@@ -48,8 +49,13 @@ ready(function () {
             } else {
                 page = "0";
             }
+            if ('log' in currentGetParams) {
+                log = currentGetParams.log;
+            } else {
+                log = "messages";
+            }
             Joomla.request({
-                url: "index.php?option=com_ajax&plugin=radicalform&format=json&group=system&admin=2&page=" + page,
+                url: "index.php?option=com_ajax&plugin=radicalform&format=json&group=system&admin=2&page=" + page + "&log=" + log,
                 onSuccess: function (response, xhr){
                     // Тут делаем что-то с результатами
                     location.reload();
@@ -96,20 +102,18 @@ ready(function () {
         });
     }
 
-    var exportCSV = document.querySelector("#exportcsv");
-    if(exportCSV)
-    {
-        exportCSV.addEventListener('click', function (event) {
-            var temp=exportCSV.innerHTML;
+    [].forEach.call(document.querySelectorAll(".exportcsv"), function (exportCSV) {
+        exportCSV.addEventListener('click', function () {
+            var temp = exportCSV.innerHTML;
             exportCSV.innerHTML = "Wait...";
-            exportCSV.disabled = true;
+            exportCSV.classList.add("disabled");
 
             setTimeout(function () {
                 exportCSV.innerHTML = temp;
-                exportCSV.disabled = false;
+                exportCSV.classList.remove("disabled");
             }, 3000)
         });
-    }
+    });
 
 
 

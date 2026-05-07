@@ -56,6 +56,11 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 	private $logPath;
 
 	/**
+	 * @var string
+	 */
+	private $spamLogPath;
+
+	/**
 	 * Max mail file size
 	 *
 	 * @var float|int
@@ -118,6 +123,7 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 		$this->maxDirSize     = $this->params->get('maxfile', 20) * 1048576;
 		$this->maxStorageSize = $this->params->get('maxstorage', 1000) * 1048576;
 		$this->logPath        = str_replace('\\', '/', $this->getApplication()->get('log_path')) . '/plg_system_radicalform.php';
+		$this->spamLogPath    = str_replace('\\', '/', $this->getApplication()->get('log_path')) . '/plg_system_radicalform_spam.php';
 		$this->maxStorageTime = $this->params->get('maxtime', 30);
 
 		Log::addLogger(
@@ -130,6 +136,18 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 			// Sets all but DEBUG log level messages to be sent to the file
 			Log::ALL & ~Log::DEBUG,
 			array('plg_system_radicalform')
+		);
+
+		Log::addLogger(
+			array(
+				// Sets file name
+				'text_file'         => 'plg_system_radicalform_spam.php',
+				// Sets the format of each line
+				'text_entry_format' => "{DATETIME}\t{CLIENTIP}\t{MESSAGE}\t{PRIORITY}"
+			),
+			// Sets all but DEBUG log level messages to be sent to the file
+			Log::ALL & ~Log::DEBUG,
+			array('plg_system_radicalform_spam')
 		);
 
 		// if we have empty storage directory or wrong directory - try to fix it
@@ -661,11 +679,10 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 		return false;
 	}
 
-	private function logAntiSpamBlock(array $input, $latestNumber, $reason)
+	private function logAntiSpamBlock(array $input, $reason)
 	{
-		$entry                   = $input;
-		$entry['rfLatestNumber'] = $latestNumber;
-		$entry['rfAntiSpam']     = $reason;
+		$entry               = $input;
+		$entry['rfAntiSpam'] = $reason;
 
 		unset($entry['uniq']);
 		unset($entry[Session::getFormToken()]);
@@ -674,7 +691,91 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 			return $value !== '';
 		});
 
-		Log::add(json_encode($entry), Log::WARNING, 'plg_system_radicalform');
+		$this->clearSpamLogFileByMaxSize();
+
+		Log::add(json_encode($entry), Log::WARNING, 'plg_system_radicalform_spam');
+	}
+
+	private function logSpamBlock(array $entry)
+	{
+		unset($entry['uniq']);
+		unset($entry[Session::getFormToken()]);
+
+		$entry = array_filter($entry, function ($value) {
+			return $value !== '';
+		});
+
+		$this->clearSpamLogFileByMaxSize();
+
+		Log::add(json_encode($entry), Log::WARNING, 'plg_system_radicalform_spam');
+	}
+
+	private function clearSpamLogFileByMaxSize()
+	{
+		if (file_exists($this->spamLogPath) && $this->params->get('maxlogfile') < filesize($this->spamLogPath))
+		{
+			$this->rotateLogFile('plg_system_radicalform_spam.php');
+			$entry = ['message' => Text::_('PLG_RADICALFORM_ROTATE_HISTORY_BY_MAX_LOG')];
+			Log::add(json_encode($entry), Log::NOTICE, 'plg_system_radicalform_spam');
+		}
+	}
+
+	private function rotateLogFile(string $baseFileName)
+	{
+		$logPath = str_replace('\\', '/', $this->getApplication()->get('log_path'));
+		$files   = [];
+
+		if (file_exists($logPath . '/' . $baseFileName))
+		{
+			$files[0] = $baseFileName;
+		}
+
+		foreach (glob($logPath . '/*.' . $baseFileName) as $filename)
+		{
+			$file = basename($filename);
+			$page = strstr($file, '.', true);
+
+			if ($page === false || !is_numeric($page))
+			{
+				continue;
+			}
+
+			$files[(int) $page] = $file;
+		}
+
+		krsort($files, SORT_NUMERIC);
+
+		foreach ($files as $version => $file)
+		{
+			$rotatedFile = $version === 0
+				? '1.' . $baseFileName
+				: ($version + 1) . substr($file, strpos($file, '.'));
+
+			try
+			{
+				File::move($logPath . '/' . $file, $logPath . '/' . $rotatedFile);
+			}
+			catch (\Throwable)
+			{
+			}
+		}
+	}
+
+	private function getHistoryLogType(array $get): string
+	{
+		return isset($get['log']) && $get['log'] === 'spam' ? 'spam' : 'messages';
+	}
+
+	private function getHistoryLogCategory(string $logType): string
+	{
+		return $logType === 'spam' ? 'plg_system_radicalform_spam' : 'plg_system_radicalform';
+	}
+
+	private function getHistoryLogFileName(string $logType, string $page): string
+	{
+		$file = $logType === 'spam' ? 'plg_system_radicalform_spam.php' : 'plg_system_radicalform.php';
+
+		return $page . $file;
 	}
 
 
@@ -1123,8 +1224,9 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 		$r      = $this->getApplication()->getInput();
 		$input  = $r->post->getArray();
 		$get    = $r->get->getArray();
-		$files  = $r->files->getArray();
-		$source = $input;
+		$files   = $r->files->getArray();
+		$source  = $input;
+		$logType = $this->getHistoryLogType($get);
 
 		$page = '';
 		if (isset($get['page']))
@@ -1184,8 +1286,9 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 				}
 				$csv .= "\r\n";
 
+				$logType  = $this->getHistoryLogType($get);
 				$log_path = str_replace('\\', '/', $this->getApplication()->get('log_path'));
-				$data     = RadicalFormHelper::getCSV($log_path . '/' . $page . 'plg_system_radicalform.php', "\t");
+				$data     = RadicalFormHelper::getCSV($log_path . '/' . $this->getHistoryLogFileName($logType, $page), "\t");
 				if (count($data) > 0)
 				{
 					for ($i = 0; $i < 6; $i++)
@@ -1213,8 +1316,8 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 						$timezone = new \DateTimeZone($site_offset);
 						$jdate->setTimezone($timezone);
 
-						$latestNumber = "";
-						if (isset($json["rfLatestNumber"]))
+						$latestNumber = $logType === 'spam' ? $i + 1 : "";
+						if ($logType !== 'spam' && isset($json["rfLatestNumber"]))
 						{
 							$latestNumber = $json["rfLatestNumber"];
 							unset($json["rfLatestNumber"]);
@@ -1494,15 +1597,19 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 			if ($this->getApplication()->isClient('administrator'))
 			{
 				// очищаем текущий файл или удаляем, если он архивный (1-plg_system_radicalform.php и т.д.)
-				if ($page)
+				$logFile = $log_path . '/' . $this->getHistoryLogFileName($logType, $page);
+				if ($page || $logType === 'spam')
 				{
-					unlink($log_path . '/' . $page . 'plg_system_radicalform.php');
+					if (file_exists($logFile))
+					{
+						unlink($logFile);
+					}
 				}
 				else
 				{
 					unlink($this->logPath);
 					$entry = ['rfLatestNumber' => $latestNumber, 'message' => Text::_('PLG_RADICALFORM_CLEAR_HISTORY')];
-					Log::add(json_encode($entry), Log::NOTICE, 'plg_system_radicalform');
+					Log::add(json_encode($entry), Log::NOTICE, $this->getHistoryLogCategory($logType));
 				}
 
 				$this->setResponse('ok');
@@ -1531,6 +1638,11 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 
 		if (!isset($input['uniq']))
 		{
+			$this->logSpamBlock([
+				'message'    => Text::_('PLG_RADICALFORM_INVALID_TOKEN'),
+				'rfAntiSpam' => 'invalid token'
+			]);
+
 			$this->setResponse(['error' => Text::_('PLG_RADICALFORM_INVALID_TOKEN')]);
 		}
 
@@ -1538,8 +1650,11 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 
 		if ($this->getApplication()->getSession()->isNew() || !$this->getApplication()->getSession()->checkToken())
 		{
-			$input = ['rfLatestNumber' => $latestNumber, 'message' => Text::_('PLG_RADICALFORM_INVALID_TOKEN')];
-			Log::add(json_encode($input), Log::WARNING, 'plg_system_radicalform');
+			$input = [
+				'message'    => Text::_('PLG_RADICALFORM_INVALID_TOKEN'),
+				'rfAntiSpam' => 'invalid token'
+			];
+			$this->logSpamBlock($input);
 
 			$this->setResponse(Text::_('PLG_RADICALFORM_INVALID_TOKEN'));
 		};
@@ -1559,7 +1674,7 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 
 		if ($antiSpamReason !== false)
 		{
-			$this->logAntiSpamBlock($input, $latestNumber, $antiSpamReason);
+			$this->logAntiSpamBlock($input, $antiSpamReason);
 
 			$this->setResponse($this->getAntiSpamMessage());
 		}
@@ -1716,8 +1831,8 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 		{
 			if ($this->params->get('maxlogfile') < filesize($this->logPath))
 			{
-				unlink($this->logPath);
-				$entry = ['rfLatestNumber' => $latestNumber, 'message' => Text::_('PLG_RADICALFORM_CLEAR_HISTORY_BY_MAX_LOG')];
+				$this->rotateLogFile('plg_system_radicalform.php');
+				$entry = ['rfLatestNumber' => $latestNumber, 'message' => Text::_('PLG_RADICALFORM_ROTATE_HISTORY_BY_MAX_LOG')];
 				Log::add(json_encode($entry), Log::NOTICE, 'plg_system_radicalform');
 				$latestNumber++;
 			}
