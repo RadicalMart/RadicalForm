@@ -1786,12 +1786,12 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 		catch (\Throwable $e)
 		{
 			$entry = [
-				'message' => 'External RadicalForm plugin error',
-				'error'   => $e->getMessage(),
-				'file'    => $e->getFile(),
-				'line'    => $e->getLine(),
-				'form'    => isset($input['rfFormID']) ? (string) $input['rfFormID'] : '',
-				'target'  => isset($input['rfTarget']) ? (string) $input['rfTarget'] : ''
+				'rfWarningMessage' => 'External RadicalForm plugin error',
+				'error'            => $e->getMessage(),
+				'file'             => $e->getFile(),
+				'line'             => $e->getLine(),
+				'form'             => isset($input['rfFormID']) ? (string) $input['rfFormID'] : '',
+				'target'           => isset($input['rfTarget']) ? (string) $input['rfTarget'] : ''
 			];
 
 			Log::add(json_encode($entry), Log::ERROR, 'plg_system_radicalform');
@@ -1898,7 +1898,7 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 			$footer .= Text::_('PLG_RADICALFORM_USERAGENT') . "<strong>" . htmlentities($useragent) . "</strong> <br />";
 			$footer .= Text::_('PLG_RADICALFORM_RESOLUTION') . "<strong>" . $resolution . "</strong> <br />";
 			$footer .= Text::_('PLG_RADICALFORM_USER_TIME') . "<strong>" . $rfTime . "</strong> <br />";
-			$footer .= Text::_('PLG_RADICALFORM_FORM_DURATION') . $rfDuration;
+			$footer .= Text::_('PLG_RADICALFORM_FORM_DURATION') . "<strong>" . $rfDuration . "</strong>";
 		}
 		else
 		{
@@ -1927,13 +1927,44 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 
 					if (file_exists($tPath) and is_file($tPath))
 					{
+						$bufferLevel = ob_get_level();
+						ob_start();
+
 						try
 						{
 							include $tPath;
+							$output = ob_get_clean();
+
+							if (trim($output) !== '')
+							{
+								$customLayoutLogInput = [
+									'rfWarningMessage' => 'Custom layout produced unexpected output',
+									'output'           => $output,
+									'layoutPath'       => $tPath,
+									'form'             => $formID,
+									'target'           => $target !== false ? (string) $target : ''
+								];
+
+								Log::add(json_encode($customLayoutLogInput), Log::WARNING, 'plg_system_radicalform');
+							}
 						}
 						catch (\Throwable $e)
 						{
-							// TODO лог
+							while (ob_get_level() > $bufferLevel)
+							{
+								ob_end_clean();
+							}
+
+							$entry = [
+								'rfWarningMessage' => 'Custom RadicalForm layout error',
+								'error'            => $e->getMessage(),
+								'file'             => $e->getFile(),
+								'line'             => $e->getLine(),
+								'form'             => $formID,
+								'target'           => $target !== false ? (string) $target : ''
+							];
+
+							Log::add(json_encode($entry), Log::ERROR, 'plg_system_radicalform');
 						}
 					}
 				}
