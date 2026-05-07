@@ -1268,23 +1268,25 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 				header('Expires: 0');
 				header('Cache-Control: no-cache');
 				$BOM = "\xEF\xBB\xBF";
-				$csv = "#;";
-				$csv .= Text::_('PLG_RADICALFORM_HISTORY_TIME') . ';';
+				$headers = [
+					'#',
+					Text::_('PLG_RADICALFORM_HISTORY_TIME')
+				];
 				if ($this->params->get('showtarget'))
 				{
-					$csv .= Text::_('PLG_RADICALFORM_HISTORY_TARGET') . ';';
+					$headers[] = Text::_('PLG_RADICALFORM_HISTORY_TARGET');
 				}
 				if ($this->params->get('showformid'))
 				{
-					$csv .= Text::_('PLG_RADICALFORM_HISTORY_FORMID') . ';';
+					$headers[] = Text::_('PLG_RADICALFORM_HISTORY_FORMID');
 				}
-				$csv .= Text::_('PLG_RADICALFORM_HISTORY_IP') . ';';
-				$csv .= Text::_('PLG_RADICALFORM_HISTORY_MESSAGE') . ';';
+				$headers[] = Text::_('PLG_RADICALFORM_HISTORY_IP');
+				$headers[] = Text::_('PLG_RADICALFORM_HISTORY_MESSAGE');
 				if ($this->params->get('hiddeninfo'))
 				{
-					$csv .= Text::_('PLG_RADICALFORM_HISTORY_EXTRA') . ';';
+					$headers[] = Text::_('PLG_RADICALFORM_HISTORY_EXTRA');
 				}
-				$csv .= "\r\n";
+				$csv = implode(';', $headers) . "\r\n";
 
 				$logType  = $this->getHistoryLogType($get);
 				$log_path = str_replace('\\', '/', $this->getApplication()->get('log_path'));
@@ -1327,12 +1329,12 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 						{
 							if (isset($json["rfTarget"]) && (!empty($json["rfTarget"])))
 							{
-								$target = "\"" . Text::_($json["rfTarget"]) . "\";";
+								$target = '"' . Text::_($json["rfTarget"]) . '"';
 								unset($json["rfTarget"]);
 							}
 							else
 							{
-								$target = ";";
+								$target = "";
 								if (isset($json["rfTarget"]))
 								{
 									unset($json["rfTarget"]);
@@ -1352,12 +1354,12 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 						{
 							if (isset($json["rfFormID"]) && (!empty($json["rfFormID"])))
 							{
-								$formid = "\"" . Text::_($json["rfFormID"]) . "\";";
+								$formid = '"' . Text::_($json["rfFormID"]) . '"';
 								unset($json["rfFormID"]);
 							}
 							else
 							{
-								$formid = ";";
+								$formid = "";
 							}
 						}
 						else
@@ -1368,69 +1370,52 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 						$extrainfo = "";
 						if ($this->params->get('hiddeninfo'))
 						{
-							$extrainfo = "\"";
-							if (isset($json["url"]))
+							$extraFieldsMap = [
+								'url'         => Text::_('PLG_RADICALFORM_URL'),
+								'reffer'      => Text::_('PLG_RADICALFORM_REFFER'),
+								'resolution'  => Text::_('PLG_RADICALFORM_RESOLUTION'),
+								'pagetitle'   => Text::_('PLG_RADICALFORM_PAGETITLE'),
+								'rfUserAgent' => Text::_('PLG_RADICALFORM_USERAGENT'),
+								'rf-time'     => Text::_('PLG_RADICALFORM_USER_TIME'),
+								'rf-duration' => Text::_('PLG_RADICALFORM_FORM_DURATION')
+							];
+							$extraFields = [];
+
+							foreach ($extraFieldsMap as $key => $label)
 							{
-								$extrainfo .= Text::_('PLG_RADICALFORM_URL') . $json["url"] . "\n";
+								if (isset($json[$key]))
+								{
+									$extraFields[] = $label . $json[$key];
+									unset($json[$key]);
+								}
 							}
-							if (isset($json["reffer"]))
-							{
-								$extrainfo .= Text::_('PLG_RADICALFORM_REFFER') . $json["reffer"] . "\n";
-							}
-							if (isset($json["resolution"]))
-							{
-								$extrainfo .= Text::_('PLG_RADICALFORM_RESOLUTION') . $json["resolution"] . "\n";
-							}
-							if (isset($json["pagetitle"]))
-							{
-								$extrainfo .= Text::_('PLG_RADICALFORM_PAGETITLE') . $json["pagetitle"] . "\n";
-							}
-							if (isset($json["rfUserAgent"]))
-							{
-								$extrainfo .= Text::_('PLG_RADICALFORM_USERAGENT') . $json["rfUserAgent"] . "\n";
-							}
-							if (isset($json["rf-time"]))
-							{
-								$extrainfo .= Text::_('PLG_RADICALFORM_USER_TIME') . $json["rf-time"] . "\n";
-							}
-							if (isset($json["rf-duration"]))
-							{
-								$extrainfo .= Text::sprintf('PLG_RADICALFORM_FORM_DURATION', $json["rf-duration"]) . "\n";
-							}
-							$extrainfo .= "\"";
+
+							$extrainfo = '"' . implode("\n", $extraFields) . '"';
 						}
 
-						if (isset($json["url"]))
+						foreach (['url', 'reffer', 'resolution', 'pagetitle', 'rfUserAgent', 'rf-time', 'rf-duration'] as $key)
 						{
-							unset($json["url"]);
-						}
-						if (isset($json["reffer"]))
-						{
-							unset($json["reffer"]);
-						}
-						if (isset($json["resolution"]))
-						{
-							unset($json["resolution"]);
-						}
-						if (isset($json["pagetitle"]))
-						{
-							unset($json["pagetitle"]);
-						}
-						if (isset($json["rfUserAgent"]))
-						{
-							unset($json["rfUserAgent"]);
-						}
-						if (isset($json["rf-time"]))
-						{
-							unset($json["rf-time"]);
-						}
-						if (isset($json["rf-duration"]))
-						{
-							unset($json["rf-duration"]);
+							if (isset($json[$key]))
+							{
+								unset($json[$key]);
+							}
 						}
 
-						$csv .= "{$latestNumber};\"" . $jdate->format('H:i:s', true) . "\n" . $jdate->format('d.m.Y', true) . "\";{$target}{$formid}{$item[1]};";
-						$csv .= "\"";
+						$row = [
+							$latestNumber,
+							'"' . $jdate->format('H:i:s', true) . "\n" . $jdate->format('d.m.Y', true) . '"'
+						];
+						if ($this->params->get('showtarget'))
+						{
+							$row[] = $target;
+						}
+						if ($this->params->get('showformid'))
+						{
+							$row[] = $formid;
+						}
+						$row[] = $item[1];
+
+						$message = "";
 						if (is_array($json))
 						{
 							$delimiter = "";
@@ -1440,18 +1425,16 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 								{
 									$record = implode(", ", $record);
 								}
-								$csv       .= $delimiter . Text::_($key) . ": " . $record;
+								$message   .= $delimiter . Text::_($key) . ": " . $record;
 								$delimiter = "\n";
 							}
 						}
+						$row[] = '"' . $message . '"';
 						if ($this->params->get('hiddeninfo'))
 						{
-							$csv .= "\";{$extrainfo};\r\n";
+							$row[] = $extrainfo;
 						}
-						else
-						{
-							$csv .= "\";\r\n";
-						}
+						$csv .= implode(';', $row) . "\r\n";
 					}
 
 				}
@@ -1915,7 +1898,7 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 			$footer .= Text::_('PLG_RADICALFORM_USERAGENT') . "<strong>" . htmlentities($useragent) . "</strong> <br />";
 			$footer .= Text::_('PLG_RADICALFORM_RESOLUTION') . "<strong>" . $resolution . "</strong> <br />";
 			$footer .= Text::_('PLG_RADICALFORM_USER_TIME') . "<strong>" . $rfTime . "</strong> <br />";
-			$footer .= Text::sprintf('PLG_RADICALFORM_FORM_DURATION', $rfDuration);
+			$footer .= Text::_('PLG_RADICALFORM_FORM_DURATION') . $rfDuration;
 		}
 		else
 		{

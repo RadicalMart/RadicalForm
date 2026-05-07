@@ -178,64 +178,40 @@ class HistoryField extends FormField
 					$extrainfo = "";
 					if ($showHiddenInfo)
 					{
+						$extraFieldsMap = [
+							'url'         => Text::_('PLG_RADICALFORM_URL'),
+							'reffer'      => Text::_('PLG_RADICALFORM_REFFER'),
+							'resolution'  => Text::_('PLG_RADICALFORM_RESOLUTION'),
+							'pagetitle'   => Text::_('PLG_RADICALFORM_PAGETITLE'),
+							'rfUserAgent' => Text::_('PLG_RADICALFORM_USERAGENT'),
+							'rf-time'     => Text::_('PLG_RADICALFORM_USER_TIME'),
+							'rf-duration' => Text::_('PLG_RADICALFORM_FORM_DURATION')
+						];
 						$extrainfo = "<div class='muted small'>";
-						if (isset($json["url"]))
+
+						foreach ($extraFieldsMap as $key => $label)
 						{
-							$extrainfo .= Text::_('PLG_RADICALFORM_URL') . '<b>' . $this->getHistoryLink($json["url"], null, 'rf-history-file-link') . "</b><br>";
-						}
-						if (isset($json["reffer"]))
-						{
-							$extrainfo .= Text::_('PLG_RADICALFORM_REFFER') . '<b>' . $this->getHistoryLink($json["reffer"], null, 'rf-history-file-link') . "</b><br>";
-						}
-						if (isset($json["resolution"]))
-						{
-							$extrainfo .= Text::_('PLG_RADICALFORM_RESOLUTION') . '<b>' . $json["resolution"] . "</b><br>";
-						}
-						if (isset($json["pagetitle"]))
-						{
-							$extrainfo .= Text::_('PLG_RADICALFORM_PAGETITLE') . '<b>' . $json["pagetitle"] . "</b><br>";
-						}
-						if (isset($json["rfUserAgent"]))
-						{
-							$extrainfo .= Text::_('PLG_RADICALFORM_USERAGENT') . '<b>' . $json["rfUserAgent"] . "</b><br>";
-						}
-						if (isset($json["rf-time"]))
-						{
-							$extrainfo .= Text::_('PLG_RADICALFORM_USER_TIME') . '<b>' . $json["rf-time"] . "</b><br>";
-						}
-						if (isset($json["rf-duration"]))
-						{
-							$extrainfo .= Text::sprintf('PLG_RADICALFORM_FORM_DURATION', $json["rf-duration"]);
+							if (!isset($json[$key]))
+							{
+								continue;
+							}
+
+							$value = in_array($key, ['url', 'reffer'], true)
+								? $this->getHistoryLink($json[$key], null, 'rf-history-file-link')
+								: htmlspecialchars((string) $json[$key], ENT_QUOTES, 'UTF-8');
+
+							$extrainfo .= $label . '<b>' . $value . "</b><br>";
+							unset($json[$key]);
 						}
 						$extrainfo .= "</div>";
 					}
-					if (isset($json["url"]))
+
+					foreach (['url', 'reffer', 'resolution', 'pagetitle', 'rfUserAgent', 'rf-time', 'rf-duration'] as $key)
 					{
-						unset($json["url"]);
-					}
-					if (isset($json["rf-duration"]))
-					{
-						unset($json["rf-duration"]);
-					}
-					if (isset($json["rf-time"]))
-					{
-						unset($json["rf-time"]);
-					}
-					if (isset($json["reffer"]))
-					{
-						unset($json["reffer"]);
-					}
-					if (isset($json["resolution"]))
-					{
-						unset($json["resolution"]);
-					}
-					if (isset($json["pagetitle"]))
-					{
-						unset($json["pagetitle"]);
-					}
-					if (isset($json["rfUserAgent"]))
-					{
-						unset($json["rfUserAgent"]);
+						if (isset($json[$key]))
+						{
+							unset($json[$key]);
+						}
 					}
 					$latestNumber = $logType === 'spam' ? $i + 1 : "";
 					if ($logType !== 'spam' && isset($json["rfLatestNumber"]))
