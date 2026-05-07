@@ -282,7 +282,7 @@ class HistoryField extends FormField
 					if (isset($item[3]) && in_array($item[3], ["WARNING", "ERROR"], true))
 					{
 						$warningTitle   = isset($json["rfAntiSpam"]) ? Text::_('PLG_RADICALFORM_ANTISPAM') . ': ' . $json["rfAntiSpam"] : $item[3];
-						$warningTitle   = $item[3] === "ERROR" && isset($json["message"]) ? $item[3] . ': ' . $json["message"] : $warningTitle;
+						$warningTitle   = isset($json["rfWarningMessage"]) ? $warningTitle . ': ' . $json["rfWarningMessage"] : $warningTitle;
 						$warningContent = $json_result ? $itog : htmlspecialchars($item[2]);
 						$html           .= '<td style="max-width: 500px; overflow: hidden; color: #9f2620;"><details><summary style="cursor: pointer; color: #9f2620;">' . htmlspecialchars($warningTitle) . '</summary><div class="rfMarginTop">' . $warningContent . '</div></details></td>' .
 							($showHiddenInfo ? '<td style="max-width: 500px; overflow: hidden;">' . $extrainfo . '</td>' : '') .

@@ -1826,7 +1826,7 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 			return $value !== '';
 		}); // delete empty fields in input array
 
-		Log::add(json_encode($input), Log::NOTICE, 'plg_system_radicalform');
+		$emailLogInput = $input;
 
 		if (isset($input["rfTarget"]) && (!empty($input["rfTarget"])))
 		{
@@ -2007,80 +2007,72 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 
 		if ($this->params->get('emailon'))
 		{
-			// if we need to send email
-			$mailer->isHtml(true);
-			$mailer->Encoding = 'base64';
-			$mailer->setBody($body);
-
-			$needToSendEmail = false;
-			if (isset($target) && (!empty($target)))
+			try
 			{
-				// if we need to send to alternative emails
-				$emailalt = (array) $this->params->get('emailalt');
-				foreach ($emailalt as $item)
+				// if we need to send email
+				$mailer->isHtml(true);
+				$mailer->Encoding = 'base64';
+				$mailer->setBody($body);
+
+				$needToSendEmail = false;
+				if (isset($target) && (!empty($target)))
 				{
-					if ($target == $item->target)
+					// if we need to send it to alternative emails
+					$emailalt = (array) $this->params->get('emailalt');
+					foreach ($emailalt as $item)
 					{
-						$mailer->addRecipient($item->email);
-						$needToSendEmail = true;
+						if ($target == $item->target)
+						{
+							$mailer->addRecipient($item->email);
+							$needToSendEmail = true;
+						}
 					}
 				}
-			}
-			else
-			{
-				//traditional send
-				$mailer->addRecipient($this->params->get('email'));
-				if (!empty($this->params->get('emailcc')))
+				else
 				{
-					$mailer->addCc($this->params->get('emailcc'));
+					//traditionally send
+					$mailer->addRecipient($this->params->get('email'));
+					if (!empty($this->params->get('emailcc')))
+					{
+						$mailer->addCc($this->params->get('emailcc'));
+					}
+					if (!empty($this->params->get('emailbcc')))
+					{
+						$mailer->addBcc($this->params->get('emailbcc'));
+					}
+					$needToSendEmail = true;
 				}
-				if (!empty($this->params->get('emailbcc')))
+
+				if ((!empty($this->params->get('replyto'))) && isset($input[$this->params->get('replyto')]))
 				{
-					$mailer->addBcc($this->params->get('emailbcc'));
+					$mailer->addReplyTo($input[$this->params->get('replyto')]);
 				}
-				$needToSendEmail = true;
-			}
 
-			if ((!empty($this->params->get('replyto'))) && isset($input[$this->params->get('replyto')]))
-			{
-				$mailer->addReplyTo($input[$this->params->get('replyto')]);
-			}
-
-			if ($needToSendEmail)
-			{
-				try
+				if ($needToSendEmail)
 				{
 					$send = $mailer->send();
 
 					if ($send === false)
 					{
-						$input            = [];
-						$input["message"] = Text::_('PLG_RADICALFORM_MAIL_DISABLED');
-						Log::add(json_encode($input), Log::WARNING, 'plg_system_radicalform');
+						$emailLogInput["rfWarningMessage"] = Text::_('PLG_RADICALFORM_MAIL_DISABLED');
+						Log::add(json_encode($emailLogInput), Log::WARNING, 'plg_system_radicalform');
 
 						$this->setResponse(Text::_('PLG_RADICALFORM_MAIL_DISABLED'));
 					}
-
 				}
-				catch (\Exception $e)
-				{
-
-					$input            = [];
-					$input["message"] = $e->getMessage();
-					Log::add(json_encode($input), Log::WARNING, 'plg_system_radicalform');
-
-					$this->setResponse($e->getMessage());
-				}
-
-				$this->setResponse(['ok', $textOutput]);
 			}
+			catch (\Exception $e)
+			{
+				$emailLogInput["rfWarningMessage"] = $e->getMessage();
+				Log::add(json_encode($emailLogInput), Log::WARNING, 'plg_system_radicalform');
 
-			$this->setResponse(['ok', $textOutput]);
+				$this->setResponse($e->getMessage());
+			}
 		}
-		else
-		{
-			$this->setResponse(['ok', $textOutput]);
-		}
+
+		Log::add(json_encode($emailLogInput), Log::NOTICE, 'plg_system_radicalform');
+
+		$this->setResponse(['ok', $textOutput]);
 
 		return false;
 	}
