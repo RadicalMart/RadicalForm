@@ -1,7 +1,7 @@
 # RadicalForm
 Радикально новый подход к созданию форм обратной связи на основе чистого Javascript
 
-<a href="https://radicalmart.ru/all/radicalform" style="background: red;">Инструкция по использованию</a>
+<a href="https://radicalmart.ru/all/radicalform" >Инструкция по использованию</a>
 
 <img width="200" alt="logoss" src="https://github.com/user-attachments/assets/829f2cdb-226f-4c36-b3c4-6cf26f4f6f1a" />
 
