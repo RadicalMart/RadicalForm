@@ -111,7 +111,24 @@ class HistoryField extends FormField
 		}
 		$logFiles .= '</ul>';
 
-		$data = RadicalFormHelper::getCSV($log_path . '/' . $logFileName, "\t");
+		$logFilePath        = $log_path . '/' . $logFileName;
+		$escapedLogFilePath = htmlspecialchars($logFilePath, ENT_QUOTES, 'UTF-8');
+		$historyReadWarning = '';
+		$data               = [];
+		if (file_exists($logFilePath))
+		{
+			if (is_readable($logFilePath))
+			{
+				$data = RadicalFormHelper::getCSV($logFilePath, "\t");
+			}
+			else
+			{
+				$historyReadWarning = $this->getHistoryFileWarning(
+					Text::sprintf('PLG_RADICALFORM_HISTORY_FILE_NOT_READABLE', $escapedLogFilePath)
+				);
+			}
+		}
+		$rawDataCount = count($data);
 		if (count($data) > 0)
 		{
 			for ($i = 0; $i < 6; $i++)
@@ -126,6 +143,14 @@ class HistoryField extends FormField
 					unset($data[$i]);
 				}
 			}
+		}
+		if ($historyReadWarning === '' && file_exists($logFilePath) && filesize($logFilePath) > 0 && count($data) === 0)
+		{
+			$historyReadWarning = $this->getHistoryFileWarning(
+				$rawDataCount > 0
+					? Text::sprintf('PLG_RADICALFORM_HISTORY_FILE_NO_VALID_ROWS', $escapedLogFilePath)
+					: Text::sprintf('PLG_RADICALFORM_HISTORY_FILE_NO_READABLE_ROWS', $escapedLogFilePath)
+			);
 		}
 		$data                 = array_reverse($data);
 		$cnt                  = count($data);
@@ -263,9 +288,10 @@ class HistoryField extends FormField
 					}
 
 
+					$historyRecordGlue = isset($params->glue) ? (string) $params->glue : ', ';
 					foreach ($json as $key => $record)
 					{
-						$record = $this->formatHistoryRecord((string) $record);
+						$record = $this->formatHistoryRecord($this->normalizeHistoryRecord($record, $historyRecordGlue));
 						$itog .= $this->getTranslatedFieldName((string) $key) . ": <b>" . $record . "</b><br />";
 					}
 
@@ -301,7 +327,10 @@ class HistoryField extends FormField
 		}
 		else
 		{
-			$html = "{$logFiles}<p class='firstEntry'>{$warningAboutRotation}{$pluginsInfo}</p>" . '<div class="historytable"><div class="alert alert-info  alert-dismissible show">' . Text::sprintf('PLG_RADICALFORM_HISTORY_EMPTY', $logLabel) . '</div></div>';
+			$emptyHistoryMessage = $historyReadWarning !== ''
+				? $historyReadWarning
+				: '<div class="historytable"><div class="alert alert-info alert-dismissible show">' . Text::sprintf('PLG_RADICALFORM_HISTORY_EMPTY', $logLabel) . '</div></div>';
+			$html = "{$logFiles}<p class='firstEntry'>{$warningAboutRotation}{$pluginsInfo}</p>" . $emptyHistoryMessage;
 		}
 
 		return $html;
@@ -331,6 +360,64 @@ class HistoryField extends FormField
 			},
 			$record
 		);
+	}
+
+	/**
+	 * Converts history field values to a display string.
+	 *
+	 * @param   mixed   $record  Field value
+	 * @param   string  $glue    Multiple values separator
+	 *
+	 * @return  string  Field value for display
+	 *
+	 * @since   __DEPLOY_VERSION__
+	 */
+	private function normalizeHistoryRecord($record, string $glue): string
+	{
+		if (is_array($record))
+		{
+			$values = [];
+			foreach ($record as $value)
+			{
+				$values[] = $this->normalizeHistoryRecord($value, $glue);
+			}
+			if ($glue === '<br />' || $glue === '<br>')
+			{
+				array_unshift($values, ' ');
+			}
+
+			return implode($glue, $values);
+		}
+
+		if ($record === null)
+		{
+			return '';
+		}
+
+		if (is_scalar($record))
+		{
+			return (string) $record;
+		}
+
+		$json = json_encode($record, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+		return $json === false ? '' : $json;
+	}
+
+	/**
+	 * Returns warning markup for log file read issues.
+	 *
+	 * @param   string  $message  Warning message
+	 *
+	 * @return  string
+	 *
+	 * @since   __DEPLOY_VERSION__
+	 */
+	private function getHistoryFileWarning(string $message): string
+	{
+		return '<div class="historytable"><div class="alert alert-warning alert-dismissible show">'
+			. $message
+			. '</div></div>';
 	}
 
 	private function getHistoryLogType(array $get): string
