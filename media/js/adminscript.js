@@ -238,7 +238,7 @@ ready(function () {
                                 }
                             }
                         } else {
-                            Joomla.renderMessages({"warning":["There are no messages to MAX bot"]},"#radicalformmaxresult");
+                            Joomla.renderMessages({"warning":[data.data[0].message || "There are no messages to MAX bot"]},"#radicalformmaxresult");
                         }
                     } else {
                         Joomla.renderMessages({"danger":["<strong>Error</strong><br>" + JSON.stringify(data.data[0])]},"#radicalformmaxresult");

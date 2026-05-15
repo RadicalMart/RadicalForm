@@ -16,13 +16,20 @@ class MaxHelper
 {
 	private const API_URL = 'https://platform-api.max.ru';
 
-	public static function getUpdates(string $token): array
+	public static function getUpdates(string $token, ?string $marker = null, int $timeout = 0): array
 	{
-		$url = self::API_URL . '/updates?' . http_build_query([
-				'types'   => 'message_created',
+		$query = [
+				'types'   => 'message_created,bot_started',
 				'limit'   => 100,
-				'timeout' => 0,
-			]);
+				'timeout' => $timeout,
+			];
+
+		if ($marker !== null && $marker !== '')
+		{
+			$query['marker'] = $marker;
+		}
+
+		$url = self::API_URL . '/updates?' . http_build_query($query);
 
 		return self::request('GET', $url, $token);
 	}
@@ -56,6 +63,20 @@ class MaxHelper
 				$type = 'user_id';
 				$id   = $message['sender']['user_id'];
 				$name = self::formatUserName($message['sender']);
+			}
+			elseif (isset($update['chat_id']))
+			{
+				$type = 'chat_id';
+				$id   = $update['chat_id'];
+				$name = isset($update['user'])
+					? self::formatUserName($update['user'])
+					: 'Chat ' . $id;
+			}
+			elseif (isset($update['user']['user_id']))
+			{
+				$type = 'user_id';
+				$id   = $update['user']['user_id'];
+				$name = self::formatUserName($update['user']);
 			}
 			else
 			{

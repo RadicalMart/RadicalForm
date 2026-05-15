@@ -1516,13 +1516,21 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 		{
 			if ($this->getApplication()->isClient('administrator'))
 			{
-				$token   = (string) $this->params->get('maxtoken');
-				$updates = MaxHelper::getUpdates($token);
-				$chats   = MaxHelper::getChats($token);
+				$token     = trim((string) $this->params->get('maxtoken'));
+				$session   = $this->getApplication()->getSession();
+				$markerKey = 'radicalform.max.marker.' . md5($token);
+				$marker    = (string) $session->get($markerKey, '');
+				$updates   = MaxHelper::getUpdates($token, $marker !== '' ? $marker : null, $marker !== '' ? 30 : 0);
+				$chats     = MaxHelper::getChats($token);
 
 				if (isset($updates['status_code']) || isset($updates['error']))
 				{
 					$this->setResponse($updates);
+				}
+
+				if (!empty($updates['marker']))
+				{
+					$session->set($markerKey, (string) $updates['marker']);
 				}
 
 				if (isset($chats['status_code']) || isset($chats['error']))
@@ -1530,12 +1538,18 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 					$this->setResponse($chats);
 				}
 
+				$recipients = MaxHelper::mergeRecipients(
+					MaxHelper::extractRecipients($updates),
+					MaxHelper::extractChats($chats)
+				);
+
 				$this->setResponse([
 					'ok'         => true,
-					'recipients' => MaxHelper::mergeRecipients(
-						MaxHelper::extractRecipients($updates),
-						MaxHelper::extractChats($chats)
-					),
+					'recipients' => $recipients,
+					'marker'     => $updates['marker'] ?? '',
+					'message'    => empty($recipients) && $marker === ''
+						? Text::_('PLG_RADICALFORM_MAX_MARKER_INITIALIZED')
+						: Text::_('PLG_RADICALFORM_MAX_NO_RECIPIENTS'),
 				]);
 			}
 			else
