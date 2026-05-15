@@ -15,8 +15,8 @@
     <authorUrl>https://radicalmart.ru</authorUrl>
     <copyright>Copyright (C) 2026 Progreccor. All rights reserved.</copyright>
     <license>GNU General Public License version 2 or later;</license>
-    <version>4.2.1</version>
-    <creationDate>2026-05-13</creationDate>
+    <version>4.2.2</version>
+    <creationDate>2026-05-15</creationDate>
     <description>PLG_RADICALFORM_DESC</description>
     <scriptfile>script.php</scriptfile>
     <namespace path="src">Joomla\Plugin\System\RadicalForm</namespace>
