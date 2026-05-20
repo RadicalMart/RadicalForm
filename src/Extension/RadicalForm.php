@@ -1456,7 +1456,7 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 				{
 					$proxy = $this->params->get('proxylogin') . ":" . $this->params->get('proxypassword') . "@" . $this->params->get('proxyaddress') . ":" . $this->params->get('proxyport');
 
-					curl_setopt($ch, CURLOPT_PROXYTYPE, CURLPROXY_SOCKS5);
+					curl_setopt($ch, CURLOPT_PROXYTYPE, CURLPROXY_SOCKS5_HOSTNAME);
 					curl_setopt($ch, CURLOPT_PROXY, $proxy);
 				}
 
@@ -2007,7 +2007,7 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 					if ($this->params->get('proxy'))
 					{
 						$proxy = $this->params->get('proxylogin') . ":" . $this->params->get('proxypassword') . "@" . $this->params->get('proxyaddress') . ":" . $this->params->get('proxyport');
-						curl_setopt($ch, CURLOPT_PROXYTYPE, CURLPROXY_SOCKS5);
+						curl_setopt($ch, CURLOPT_PROXYTYPE, CURLPROXY_SOCKS5_HOSTNAME);
 						curl_setopt($ch, CURLOPT_PROXY, $proxy);
 					}
 
