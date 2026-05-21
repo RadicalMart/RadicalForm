@@ -835,7 +835,8 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 				'KeepAlive'           => $this->params->get('keepalive'),
 				'TokenExpire'         => $refreshTime * 1000,
 				'DeleteColor'         => $this->params->get('buttondeletecolor', "#fafafa"),
-				'DeleteBackground'    => $this->params->get('buttondeletecolorbackground', "#f44336")
+				'DeleteBackground'    => $this->params->get('buttondeletecolorbackground', "#f44336"),
+				'TrackUtm'            => $this->params->get('track_utm', 0)
 			);
 			if ($this->params->get('insertip'))
 			{
@@ -1089,6 +1090,22 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 	 */
 	public function onAfterInitialise()
 	{
+		// Collect UTM parameters from query string and store in session
+		if ($this->params->get('track_utm', 0))
+		{
+			$input   = $this->getApplication()->getInput();
+			$session = $this->getApplication()->getSession();
+
+			foreach (['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content'] as $utm)
+			{
+				$value = $input->getString($utm);
+				if ($value)
+				{
+					$session->set($utm, $value);
+				}
+			}
+		}
+
 		$uri   = Uri::getInstance();
 		$path  = $uri->getPath();
 		$root  = Uri::root(true);
@@ -1655,6 +1672,21 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 
 			$this->setResponse(Text::_('PLG_RADICALFORM_INVALID_TOKEN'));
 		};
+
+		// Restore UTM parameters from session if not already present in submitted data
+		if ($this->params->get('track_utm', 0))
+		{
+			$session = $this->getApplication()->getSession();
+
+			foreach (['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content'] as $utm)
+			{
+				$value = $session->get($utm);
+				if ($value && empty($input[$utm]))
+				{
+					$input[$utm] = $value;
+				}
+			}
+		}
 
 		if (isset($get['file']) && $get['file'] == 1)
 		{
