@@ -61,6 +61,11 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 	private $spamLogPath;
 
 	/**
+	 * @var string
+	 */
+	private const UTM_SESSION_KEY = 'radicalform.utm';
+
+	/**
 	 * Max mail file size
 	 *
 	 * @var float|int
@@ -314,6 +319,39 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 		}
 
 		return Text::_($message);
+	}
+
+	private function isUtmDataValid(array $utmData): bool
+	{
+		if (empty($utmData['values']) || !is_array($utmData['values']))
+		{
+			return false;
+		}
+
+		$lifetime = max(0, (int) $this->params->get('track_utm_lifetime', 0));
+
+		if ($lifetime === 0)
+		{
+			return true;
+		}
+
+		if (empty($utmData['created_at']))
+		{
+			return false;
+		}
+
+		return (time() - (int) $utmData['created_at']) <= ($lifetime * 60);
+	}
+
+	private function getAllowedUtmTags(): array
+	{
+		$tags = explode(',', (string) $this->params->get('track_utm_allowed_tags', 'utm_source,utm_medium,utm_campaign,utm_term,utm_content'));
+		$tags = array_map('trim', $tags);
+		$tags = array_filter($tags, function ($tag) {
+			return preg_match('/^utm_[a-z0-9_]+$/i', $tag);
+		});
+
+		return array_values(array_unique($tags));
 	}
 
 	private function normalizeBeforeSendRejection($result)
@@ -835,8 +873,7 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 				'KeepAlive'           => $this->params->get('keepalive'),
 				'TokenExpire'         => $refreshTime * 1000,
 				'DeleteColor'         => $this->params->get('buttondeletecolor', "#fafafa"),
-				'DeleteBackground'    => $this->params->get('buttondeletecolorbackground', "#f44336"),
-				'TrackUtm'            => $this->params->get('track_utm', 0)
+				'DeleteBackground'    => $this->params->get('buttondeletecolorbackground', "#f44336")
 			);
 			if ($this->params->get('insertip'))
 			{
@@ -1095,14 +1132,23 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 		{
 			$input   = $this->getApplication()->getInput();
 			$session = $this->getApplication()->getSession();
+			$values  = [];
 
-			foreach (['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content'] as $utm)
+			foreach ($this->getAllowedUtmTags() as $utm)
 			{
 				$value = $input->getString($utm);
 				if ($value)
 				{
-					$session->set($utm, $value);
+					$values[$utm] = $value;
 				}
+			}
+
+			if ($values)
+			{
+				$session->set(self::UTM_SESSION_KEY, [
+					'created_at' => time(),
+					'values'     => $values
+				]);
 			}
 		}
 
@@ -1677,13 +1723,30 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 		if ($this->params->get('track_utm', 0))
 		{
 			$session = $this->getApplication()->getSession();
+			$utmData = (array) $session->get(self::UTM_SESSION_KEY, []);
+			$allowedUtmTags = $this->getAllowedUtmTags();
 
-			foreach (['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content'] as $utm)
+			if (!$this->isUtmDataValid($utmData))
 			{
-				$value = $session->get($utm);
-				if ($value && empty($input[$utm]))
+				$session->clear(self::UTM_SESSION_KEY);
+			}
+			else
+			{
+				foreach ((array) ($utmData['values'] ?? []) as $utm => $value)
 				{
-					$input[$utm] = $value;
+					if (in_array($utm, $allowedUtmTags, true) && $value && empty($input[$utm]))
+					{
+						$input[$utm] = $value;
+					}
+				}
+
+				if (!empty($utmData['created_at']) && !empty($utmData['values']) && empty($input['utm_created_at']))
+				{
+					$siteOffset = $this->getApplication()->get('offset');
+					$date       = Factory::getDate('@' . (int) $utmData['created_at']);
+					$date->setTimezone(new \DateTimeZone($siteOffset));
+
+					$input['utm_created_at'] = $date->format('Y-m-d H:i:s', true);
 				}
 			}
 		}
