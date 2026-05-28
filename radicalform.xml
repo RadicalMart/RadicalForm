@@ -15,8 +15,8 @@
     <authorUrl>https://radicalmart.ru</authorUrl>
     <copyright>Copyright (C) 2026 Progreccor. All rights reserved.</copyright>
     <license>GNU General Public License version 2 or later;</license>
-    <version>4.2.3</version>
-    <creationDate>2026-05-21</creationDate>
+    <version>4.2.4</version>
+    <creationDate>2026-05-28</creationDate>
     <description>PLG_RADICALFORM_DESC</description>
     <scriptfile>script.php</scriptfile>
     <namespace path="src">Joomla\Plugin\System\RadicalForm</namespace>
@@ -313,6 +313,39 @@
                         default="0">
                     <option value="1">JON</option>
                     <option value="0">JOFF</option>
+                </field>
+                <field
+                        name="track_utm"
+                        type="radio"
+                        label="PLG_RADICALFORM_TRACK_UTM_LABEL"
+                        description="PLG_RADICALFORM_TRACK_UTM_DESC"
+                        class="btn-group btn-group-yesno"
+                        default="0">
+                    <option value="1">JON</option>
+                    <option value="0">JOFF</option>
+                </field>
+                <field
+                        name="track_utm_lifetime"
+                        type="text"
+                        label="PLG_RADICALFORM_TRACK_UTM_LIFETIME_LABEL"
+                        description="PLG_RADICALFORM_TRACK_UTM_LIFETIME_DESC"
+                        required="false"
+                        default="0"
+                        size="10"
+                        class="input-small w-auto"
+                        showon="track_utm:1"
+                        filter="integer">
+                </field>
+                <field
+                        name="track_utm_allowed_tags"
+                        type="text"
+                        label="PLG_RADICALFORM_TRACK_UTM_ALLOWED_TAGS_LABEL"
+                        description="PLG_RADICALFORM_TRACK_UTM_ALLOWED_TAGS_DESC"
+                        required="false"
+                        default="utm_source,utm_medium,utm_campaign,utm_term,utm_content"
+                        class="input-xlarge"
+                        showon="track_utm:1"
+                        filter="string">
                 </field>
                 <field type="spacer" name="myspacer13" hr="true"/>
             </fieldset>

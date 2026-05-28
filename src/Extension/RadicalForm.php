@@ -61,6 +61,11 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 	private $spamLogPath;
 
 	/**
+	 * @var string
+	 */
+	private const UTM_SESSION_KEY = 'radicalform.utm';
+
+	/**
 	 * Max mail file size
 	 *
 	 * @var float|int
@@ -314,6 +319,39 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 		}
 
 		return Text::_($message);
+	}
+
+	private function isUtmDataValid(array $utmData): bool
+	{
+		if (empty($utmData['values']) || !is_array($utmData['values']))
+		{
+			return false;
+		}
+
+		$lifetime = max(0, (int) $this->params->get('track_utm_lifetime', 0));
+
+		if ($lifetime === 0)
+		{
+			return true;
+		}
+
+		if (empty($utmData['created_at']))
+		{
+			return false;
+		}
+
+		return (time() - (int) $utmData['created_at']) <= ($lifetime * 60);
+	}
+
+	private function getAllowedUtmTags(): array
+	{
+		$tags = explode(',', (string) $this->params->get('track_utm_allowed_tags', 'utm_source,utm_medium,utm_campaign,utm_term,utm_content'));
+		$tags = array_map('trim', $tags);
+		$tags = array_filter($tags, function ($tag) {
+			return preg_match('/^utm_[a-z0-9_]+$/i', $tag);
+		});
+
+		return array_values(array_unique($tags));
 	}
 
 	private function normalizeBeforeSendRejection($result)
@@ -1089,6 +1127,31 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 	 */
 	public function onAfterInitialise()
 	{
+		// Collect UTM parameters from query string and store in session
+		if ($this->params->get('track_utm', 0))
+		{
+			$input   = $this->getApplication()->getInput();
+			$session = $this->getApplication()->getSession();
+			$values  = [];
+
+			foreach ($this->getAllowedUtmTags() as $utm)
+			{
+				$value = $input->getString($utm);
+				if ($value)
+				{
+					$values[$utm] = $value;
+				}
+			}
+
+			if ($values)
+			{
+				$session->set(self::UTM_SESSION_KEY, [
+					'created_at' => time(),
+					'values'     => $values
+				]);
+			}
+		}
+
 		$uri   = Uri::getInstance();
 		$path  = $uri->getPath();
 		$root  = Uri::root(true);
@@ -1655,6 +1718,38 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 
 			$this->setResponse(Text::_('PLG_RADICALFORM_INVALID_TOKEN'));
 		};
+
+		// Restore UTM parameters from session if not already present in submitted data
+		if ($this->params->get('track_utm', 0))
+		{
+			$session = $this->getApplication()->getSession();
+			$utmData = (array) $session->get(self::UTM_SESSION_KEY, []);
+			$allowedUtmTags = $this->getAllowedUtmTags();
+
+			if (!$this->isUtmDataValid($utmData))
+			{
+				$session->clear(self::UTM_SESSION_KEY);
+			}
+			else
+			{
+				foreach ((array) ($utmData['values'] ?? []) as $utm => $value)
+				{
+					if (in_array($utm, $allowedUtmTags, true) && $value && empty($input[$utm]))
+					{
+						$input[$utm] = $value;
+					}
+				}
+
+				if (!empty($utmData['created_at']) && !empty($utmData['values']) && empty($input['utm_created_at']))
+				{
+					$siteOffset = $this->getApplication()->get('offset');
+					$date       = Factory::getDate('@' . (int) $utmData['created_at']);
+					$date->setTimezone(new \DateTimeZone($siteOffset));
+
+					$input['utm_created_at'] = $date->format('Y-m-d H:i:s', true);
+				}
+			}
+		}
 
 		if (isset($get['file']) && $get['file'] == 1)
 		{
