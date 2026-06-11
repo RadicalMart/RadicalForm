@@ -114,7 +114,7 @@
                         description="PLG_RADICALFORM_RF_CALL_2_DESCRIPTION"
                         height="140"
                         filter="raw"
-	                        default="document.getElementById('rf-message-' + RadicalForm.RadicalFormClass.uniq)?.remove(); here.insertAdjacentHTML('afterend', '&lt;div id=&quot;rf-message-' + RadicalForm.RadicalFormClass.uniq + '&quot; class=&quot;mt-3&quot;&gt;&lt;/div&gt;'); Joomla.renderMessages({ message: [rfMessage] }, '#rf-message-' + RadicalForm.RadicalFormClass.uniq, false, 5000);"
+	                        default="if (window.Joomla &amp;&amp; typeof Joomla.renderMessages === 'function') { document.getElementById('rf-message-' + RadicalForm.RadicalFormClass.uniq)?.remove(); here.insertAdjacentHTML('afterend', '&lt;div id=&quot;rf-message-' + RadicalForm.RadicalFormClass.uniq + '&quot; class=&quot;mt-3&quot;&gt;&lt;/div&gt;'); Joomla.renderMessages({ message: [rfMessage] }, '#rf-message-' + RadicalForm.RadicalFormClass.uniq, false, 5000); } else { alert(rfMessage); }"
 	                />
                 <field
                         name="rfCall_3"
