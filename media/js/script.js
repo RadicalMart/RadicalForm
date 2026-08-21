@@ -73,6 +73,50 @@ RadicalFormClass = function () {
         });
     };
 
+    this.getReservedFieldNames = function(form) {
+        var reservedFieldNames = Array.isArray(RadicalForm.ReservedFieldNames)
+                ? RadicalForm.ReservedFieldNames
+                : [],
+            found = [];
+
+        [].forEach.call(form.querySelectorAll('input[name], select[name], textarea[name]'), function(el) {
+            var fieldName = el.name.split('[')[0].toLowerCase();
+
+            if (reservedFieldNames.indexOf(fieldName) !== -1 && found.indexOf(fieldName) === -1) {
+                found.push(fieldName);
+            }
+        });
+
+        return found;
+    };
+
+    this.showReservedFieldError = function(form, fieldNames, here) {
+        var message = RadicalForm.ReservedFieldMessage.replace(
+            '%s',
+            fieldNames.map(function(fieldName) {
+                return '"' + fieldName + '"';
+            }).join(', ')
+        );
+
+        [].forEach.call(form.querySelectorAll('input[name], select[name], textarea[name]'), function(el) {
+            var fieldName = el.name.split('[')[0].toLowerCase();
+
+            if (fieldNames.indexOf(fieldName) !== -1) {
+                selfClass.danger_classes.forEach(function(item) {
+                    el.classList.add(item);
+                });
+            }
+        });
+
+        console.error(message);
+
+        try {
+            rfCall_9(message, here);
+        } catch (e) {
+            console.error('Radical Form JS Code: ', e);
+        }
+    };
+
     if (RadicalForm.KeepAlive != 0) {
         window.setInterval(function() {
 
@@ -206,7 +250,8 @@ RadicalFormClass = function () {
     this.formSend = function(e) {
         var needReturn = false,
             field,
-            form = selfClass.closest(this, '.rf-form');
+            form = selfClass.closest(this, '.rf-form'),
+            reservedFieldNames;
         if (form === null ) {
             alert("There is no parent with css class .rf-form for your send button!\r\nSee possible explanation in console log.");
             console.log("If you use uikit 3 - it moves the modal window to the end of the document the moment it is opened.\n" +
@@ -214,6 +259,14 @@ RadicalFormClass = function () {
                 "Thus, the window at the moment of its opening may not be where it was in the original layout.\n" +
                 "\n" +
                 "Check this with the browser's developer tools at the moment the modal window is open.");
+            e.preventDefault();
+            return;
+        }
+
+        reservedFieldNames = selfClass.getReservedFieldNames(form);
+
+        if (reservedFieldNames.length) {
+            selfClass.showReservedFieldError(form, reservedFieldNames, this);
             e.preventDefault();
             return;
         }
@@ -394,8 +447,16 @@ RadicalFormClass = function () {
                         response = JSON.parse(this.response);
                     } catch (e) {
                         response = false;
+                        message = 'Invalid server response. Expected JSON.'
+                            + '\nResponse code: ' + request.status
+                            + (request.statusText ? ' ' + request.statusText : '')
+                            + '\n' + e.message;
+                        console.error(
+                            message
+                            + (request.responseText ? '\n' + request.responseText : '')
+                        );
                         try {
-                            rfCall_9(('Response code: ' + request.status + '\n' + e.message + '\n' + this.response), buttonPressed);
+                            rfCall_9(message, buttonPressed);
                         } catch (e) {
                             console.error('Radical Form JS Code: ', e);
                         }
@@ -482,8 +543,14 @@ RadicalFormClass = function () {
                 } else if (this.readyState === 4 && this.status !== 200) {
                     buttonPressed.innerHTML=prevousButtonText;
                     buttonPressed.disabled=false;
+                    message = request.status
+                        + (request.statusText ? ' ' + request.statusText : '');
+                    console.error(
+                        message
+                        + (request.responseText ? '\n' + request.responseText : '')
+                    );
                     try {
-                        rfCall_9((request.status + ' ' + request.message), buttonPressed);
+                        rfCall_9(message, buttonPressed);
                     } catch (e) {
                         console.error('Radical Form JS Code: ', e);
                     }
@@ -510,6 +577,14 @@ RadicalFormClass = function () {
             buttonPressed = this,
             files = Array.from(this.files),
             rfDelete="&nbsp;<svg class=\"rf-button-delete\" style=\"cursor: pointer;\" height=\"16\" viewBox=\"0 0 512 512\" width=\"16\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M256 0C114.836 0 0 114.836 0 256s114.836 256 256 256 256-114.836 256-256S397.164 0 256 0zm0 0\" fill=\"" + RadicalForm.DeleteBackground + "\"/><path d=\"M350.273 320.105c8.34 8.344 8.34 21.825 0 30.168a21.275 21.275 0 01-15.086 6.25c-5.46 0-10.921-2.09-15.082-6.25L256 286.164l-64.105 64.11a21.273 21.273 0 01-15.083 6.25 21.275 21.275 0 01-15.085-6.25c-8.34-8.344-8.34-21.825 0-30.169L225.836 256l-64.11-64.105c-8.34-8.344-8.34-21.825 0-30.168 8.344-8.34 21.825-8.34 30.169 0L256 225.836l64.105-64.11c8.344-8.34 21.825-8.34 30.168 0 8.34 8.344 8.34 21.825 0 30.169L286.164 256zm0 0\" fill=\""  +RadicalForm.DeleteColor + "\"/></svg>";
+
+        var reservedFieldNames = selfClass.getReservedFieldNames(form);
+
+        if (reservedFieldNames.length) {
+            selfClass.showReservedFieldError(form, reservedFieldNames, this);
+            this.value = "";
+            return;
+        }
 
         if (!files.length) {
             return;
@@ -558,7 +633,13 @@ RadicalFormClass = function () {
                         try {
                             response = JSON.parse(this.response);
                         } catch (e) {
-                            console.error(request.status + ' ' + e.message + ' ' + this.response);
+                            console.error(
+                                'Invalid server response. Expected JSON.\nResponse code: '
+                                + request.status
+                                + (request.statusText ? ' ' + request.statusText : '')
+                                + '\n' + e.message
+                                + (request.responseText ? '\n' + request.responseText : '')
+                            );
                             rf_filenames_list.insertAdjacentHTML('beforeend', "<div class='" + selfClass.error_file_classes.join(' ') + "'>Unknown Error. See Console.</div>");
                             response = false;
                             done();
@@ -583,11 +664,19 @@ RadicalFormClass = function () {
                         done();
                     } else if (this.readyState === 4 && this.status !== 200) {
                         try {
-                            rfCall_9((request.status + ' ' + request.message), buttonPressed);
+                            rfCall_9(
+                                request.status
+                                + (request.statusText ? ' ' + request.statusText : ''),
+                                buttonPressed
+                            );
                         } catch (e) {
                             console.error('Radical Form JS Code: ', e);
                         }
-                        console.error(request.status + ' ' + request.message);
+                        console.error(
+                            request.status
+                            + (request.statusText ? ' ' + request.statusText : '')
+                            + (request.responseText ? '\n' + request.responseText : '')
+                        );
                         done();
                     }
                 };

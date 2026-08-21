@@ -65,6 +65,21 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 	 */
 	private const UTM_SESSION_KEY = 'radicalform.utm';
 
+    /**
+     * Field names used by Joomla to route com_ajax requests.
+     *
+     * @var string[]
+     */
+    private const RESERVED_FIELD_NAMES = [
+        'option',
+        'plugin',
+        'group',
+        'format',
+        'module',
+        'template',
+        'method'
+    ];
+
 	/**
 	 * Max mail file size
 	 *
@@ -308,6 +323,32 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 
 		return $input;
 	}
+
+    private function getReservedFieldNames(array ...$sources): array
+    {
+        $reserved = array_fill_keys(self::RESERVED_FIELD_NAMES, true);
+        $found    = [];
+
+        foreach ($sources as $source)
+        {
+            foreach (array_keys($source) as $name)
+            {
+                if (!is_string($name))
+                {
+                    continue;
+                }
+
+                $normalizedName = strtolower($name);
+
+                if (isset($reserved[$normalizedName]))
+                {
+                    $found[$normalizedName] = true;
+                }
+            }
+        }
+
+        return array_keys($found);
+    }
 
 	private function getAntiSpamMessage()
 	{
@@ -873,7 +914,9 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 				'KeepAlive'           => $this->params->get('keepalive'),
 				'TokenExpire'         => $refreshTime * 1000,
 				'DeleteColor'         => $this->params->get('buttondeletecolor', "#fafafa"),
-				'DeleteBackground'    => $this->params->get('buttondeletecolorbackground', "#f44336")
+				'DeleteBackground'    => $this->params->get('buttondeletecolorbackground', "#f44336"),
+                'ReservedFieldNames'   => self::RESERVED_FIELD_NAMES,
+                'ReservedFieldMessage' => Text::_('PLG_RADICALFORM_RESERVED_FIELD_NAMES')
 			);
 			if ($this->params->get('insertip'))
 			{
@@ -1182,7 +1225,6 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 		{
 			$finfo    = finfo_open(FILEINFO_MIME_TYPE);
 			$mimetype = finfo_file($finfo, $filepath);
-			finfo_close($finfo);
 		}
 		else
 		{
@@ -1288,6 +1330,17 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 		$input  = $r->post->getArray();
 		$get    = $r->get->getArray();
 		$files   = $r->files->getArray();
+
+        $reservedFieldNames = $this->getReservedFieldNames($input, $files);
+
+        if ($reservedFieldNames !== [])
+        {
+            $this->setErrorResponse(
+                Text::sprintf('PLG_RADICALFORM_RESERVED_FIELD_NAMES', implode(', ', $reservedFieldNames)),
+                ['fields' => $reservedFieldNames]
+            );
+        }
+
 		$source  = $input;
 		$logType = $this->getHistoryLogType($get);
 
@@ -1534,7 +1587,6 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 				{
 					$this->setResponse($output);
 				}
-				curl_close($ch);
 				$output  = $output["result"];
 				$chatIDs = [];
 
@@ -2112,7 +2164,6 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 					curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 					curl_setopt($ch, CURLOPT_HEADER, 0);
 					curl_exec($ch);
-					curl_close($ch);
 				}
 			}
 		}

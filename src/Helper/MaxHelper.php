@@ -195,8 +195,6 @@ class MaxHelper
 		$code   = curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
 		$error  = curl_error($ch);
 
-		curl_close($ch);
-
 		if ($result === false)
 		{
 			return [
