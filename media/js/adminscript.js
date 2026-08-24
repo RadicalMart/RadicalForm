@@ -55,7 +55,9 @@ ready(function () {
                 log = "messages";
             }
             Joomla.request({
-                url: "index.php?option=com_ajax&plugin=radicalform&format=json&group=system&admin=2&page=" + page + "&log=" + log,
+                url: "index.php?option=com_ajax&plugin=radicalform&format=json&group=system",
+                method: "POST",
+                data: "admin=2&page=" + encodeURIComponent(page) + "&log=" + encodeURIComponent(log) + "&" + encodeURIComponent(historyClear.dataset.token) + "=1",
                 onSuccess: function (response, xhr){
                     // Тут делаем что-то с результатами
                     location.reload();
@@ -84,7 +86,9 @@ ready(function () {
             numberClear.innerHTML  = "Wait...";
             numberClear.disabled = true;
             Joomla.request({
-                url: "index.php?option=com_ajax&plugin=radicalform&format=json&group=system&admin=3" ,
+                url: "index.php?option=com_ajax&plugin=radicalform&format=json&group=system",
+                method: "POST",
+                data: "admin=3&" + encodeURIComponent(numberClear.dataset.token) + "=1",
                 onSuccess: function (response, xhr){
                     // Тут делаем что-то с результатами
                     location.reload();

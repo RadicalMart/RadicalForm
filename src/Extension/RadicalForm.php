@@ -20,6 +20,7 @@ use Joomla\CMS\Response\JsonResponse;
 use Joomla\Database\DatabaseInterface;
 use Joomla\Event\DispatcherInterface;
 use Joomla\CMS\Factory;
+use Joomla\CMS\Filter\InputFilter;
 use Joomla\CMS\Language\Text;
 use Joomla\CMS\Log\Log;
 use Joomla\CMS\Plugin\CMSPlugin;
@@ -256,6 +257,40 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 		$repl = array('.', '_', '');
 
 		return trim(preg_replace($regex, $repl, $file));
+	}
+
+	/**
+	 * Prevent spreadsheet applications from interpreting exported values as formulas.
+	 *
+	 * @param   mixed  $value  CSV cell value
+	 *
+	 * @return string
+	 *
+	 * @since  __DEPLOY_VERSION__
+	 */
+	private function escapeCsvFormula($value)
+	{
+		$value = (string) $value;
+
+		if (preg_match('/^[=+\-@\t\r]/', $value))
+		{
+			return "'" . $value;
+		}
+
+		return $value;
+	}
+
+	/**
+	 * Check access to RadicalForm administrative operations.
+	 *
+	 * @return boolean
+	 *
+	 * @since  __DEPLOY_VERSION__
+	 */
+	private function canManagePlugin()
+	{
+		return $this->getApplication()->isClient('administrator')
+			&& $this->getApplication()->getIdentity()->authorise('core.manage', 'com_plugins');
 	}
 
 	/**
@@ -1075,28 +1110,6 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 					continue;
 				}
 
-				if ($file['name'])
-				{
-					$mime     = $this->mimetype($file['tmp_name']);
-					$mimetype = explode('/', $mime);
-
-					if ($mimetype[0] == "text")
-					{
-						$output["error"] = Text::_('PLG_RADICALFORM_ERROR_WRONG_TYPE');
-						continue;
-					}
-					if (strpos($mime, "svg") !== false)
-					{
-						$output["error"] = Text::_('PLG_RADICALFORM_ERROR_WRONG_TYPE');
-						continue;
-					}
-				}
-				else
-				{
-					$output["error"] = Text::_('PLG_RADICALFORM_ERROR_WRONG_TYPE');
-					continue;
-				}
-
 				if ($file['error'] == 4) // ERROR NO FILE
 					continue;
 
@@ -1118,6 +1131,21 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 				}
 				else
 				{
+					if (!$file['name'] || !InputFilter::isSafeFile($file))
+					{
+						$output["error"] = Text::_('PLG_RADICALFORM_ERROR_WRONG_TYPE');
+						continue;
+					}
+
+					$mime     = $this->mimetype($file['tmp_name']);
+					$mimetype = explode('/', $mime);
+
+					if ($mimetype[0] == "text" || strpos($mime, "svg") !== false)
+					{
+						$output["error"] = Text::_('PLG_RADICALFORM_ERROR_WRONG_TYPE');
+						continue;
+					}
+
 					if (($file['size'] + $totalsize) < $this->maxStorageSize)
 					{
 						if (!$file['name'])
@@ -1330,6 +1358,8 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 		$input  = $r->post->getArray();
 		$get    = $r->get->getArray();
 		$files   = $r->files->getArray();
+		$request = $this->getApplication()->isClient('administrator') ? array_merge($get, $input) : $get;
+		$admin   = $request['admin'] ?? null;
 
         $reservedFieldNames = $this->getReservedFieldNames($input, $files);
 
@@ -1342,24 +1372,29 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
         }
 
 		$source  = $input;
-		$logType = $this->getHistoryLogType($get);
+		$logType = $this->getHistoryLogType($request);
 
 		$page = '';
-		if (isset($get['page']))
+		if (isset($request['page']))
 		{
-			if ($get['page'] == "0")
+			if ($request['page'] == "0")
 			{
 				$page = '';
 			}
 			else
 			{
-				$page = $get['page'] . ".";
+				$page = $request['page'] . ".";
 			}
 		}
 
-		if (isset($get['deletefile']) && isset($get['catalog']) && isset($get['uniq']))
+		if (($get['file'] ?? null) === 'delete' && isset($input['deletefile'], $input['catalog'], $input['uniq']))
 		{
-			$this->setResponse($this->deleteUploadedFile($get['catalog'], $get['deletefile'], $get['uniq']));
+			if (!Session::checkToken('post'))
+			{
+				$this->setErrorResponse(Text::_('JINVALID_TOKEN'), [], 403);
+			}
+
+			$this->setResponse($this->deleteUploadedFile($input['catalog'], $input['deletefile'], $input['uniq']));
 		}
 
 		if (isset($input['gettoken']))
@@ -1367,11 +1402,15 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 			$this->setResponse(Session::getFormToken());
 		}
 
-		if (isset($get['admin']) && ($get['admin'] == 4 || $get['admin'] == 5))
+		if ($admin == 4 || $admin == 5)
 		{
 			// 5 зарезервировано для другого вида экспорта
 			// это экспорт csv
-			if ($this->getApplication()->isClient('administrator'))
+			if (!$this->canManagePlugin())
+			{
+				$this->setErrorResponse(Text::_('JERROR_ALERTNOAUTHOR'), [], 403);
+			}
+			else
 			{
 				$site_offset = $this->getApplication()->get('offset'); //get offset of joomla time like asia/kolkata
 				$jdate       = Factory::getDate('now');
@@ -1383,7 +1422,8 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 				header("Content-Type: text/csv");
 				header('Expires: 0');
 				header('Cache-Control: no-cache');
-				$BOM = "\xEF\xBB\xBF";
+				$output = fopen('php://output', 'w');
+				fwrite($output, "\xEF\xBB\xBF");
 				$headers = [
 					'#',
 					Text::_('PLG_RADICALFORM_HISTORY_TIME')
@@ -1402,9 +1442,9 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 				{
 					$headers[] = Text::_('PLG_RADICALFORM_HISTORY_EXTRA');
 				}
-				$csv = implode(';', $headers) . "\r\n";
+				fputcsv($output, array_map([$this, 'escapeCsvFormula'], $headers), ';', '"', '', "\r\n");
 
-				$logType  = $this->getHistoryLogType($get);
+				$logType  = $this->getHistoryLogType($request);
 				$log_path = str_replace('\\', '/', $this->getApplication()->get('log_path'));
 				$data     = RadicalFormHelper::getCSV($log_path . '/' . $this->getHistoryLogFileName($logType, $page), "\t");
 				if (count($data) > 0)
@@ -1445,7 +1485,7 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 						{
 							if (isset($json["rfTarget"]) && (!empty($json["rfTarget"])))
 							{
-								$target = '"' . Text::_($json["rfTarget"]) . '"';
+								$target = Text::_($json["rfTarget"]);
 								unset($json["rfTarget"]);
 							}
 							else
@@ -1470,7 +1510,7 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 						{
 							if (isset($json["rfFormID"]) && (!empty($json["rfFormID"])))
 							{
-								$formid = '"' . Text::_($json["rfFormID"]) . '"';
+								$formid = Text::_($json["rfFormID"]);
 								unset($json["rfFormID"]);
 							}
 							else
@@ -1506,7 +1546,7 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 								}
 							}
 
-							$extrainfo = '"' . implode("\n", $extraFields) . '"';
+							$extrainfo = implode("\n", $extraFields);
 						}
 
 						foreach (['url', 'reffer', 'resolution', 'pagetitle', 'rfUserAgent', 'rf-time', 'rf-duration'] as $key)
@@ -1519,7 +1559,7 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 
 						$row = [
 							$latestNumber,
-							'"' . $jdate->format('H:i:s', true) . "\n" . $jdate->format('d.m.Y', true) . '"'
+							$jdate->format('H:i:s', true) . "\n" . $jdate->format('d.m.Y', true)
 						];
 						if ($this->params->get('showtarget'))
 						{
@@ -1545,17 +1585,17 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 								$delimiter = "\n";
 							}
 						}
-						$row[] = '"' . $message . '"';
+						$row[] = $message;
 						if ($this->params->get('hiddeninfo'))
 						{
 							$row[] = $extrainfo;
 						}
-						$csv .= implode(';', $row) . "\r\n";
+						fputcsv($output, array_map([$this, 'escapeCsvFormula'], $row), ';', '"', '', "\r\n");
 					}
 
 				}
 
-				echo $BOM . $csv;
+				fclose($output);
 				$this->getApplication()->close(200);
 			}
 		}
@@ -1704,9 +1744,17 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 			}
 		}
 
-		if (isset($get['admin']) && $get['admin'] == 2)
+		if ($admin == 2)
 		{
-			if ($this->getApplication()->isClient('administrator'))
+			if (!$this->canManagePlugin())
+			{
+				$this->setErrorResponse(Text::_('JERROR_ALERTNOAUTHOR'), [], 403);
+			}
+			elseif (!Session::checkToken('post'))
+			{
+				$this->setErrorResponse(Text::_('JINVALID_TOKEN'), [], 403);
+			}
+			else
 			{
 				// очищаем текущий файл или удаляем, если он архивный (1-plg_system_radicalform.php и т.д.)
 				$logFile = $log_path . '/' . $this->getHistoryLogFileName($logType, $page);
@@ -1726,25 +1774,25 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 
 				$this->setResponse('ok');
 			}
-			else
-			{
-				return false;
-			}
 		}
 
-		if (isset($get['admin']) && $get['admin'] == 3)
+		if ($admin == 3)
 		{
-			if ($this->getApplication()->isClient('administrator'))
+			if (!$this->canManagePlugin())
+			{
+				$this->setErrorResponse(Text::_('JERROR_ALERTNOAUTHOR'), [], 403);
+			}
+			elseif (!Session::checkToken('post'))
+			{
+				$this->setErrorResponse(Text::_('JINVALID_TOKEN'), [], 403);
+			}
+			else
 			{
 				// сбрасываем нумерацию
 				$entry = ['rfLatestNumber' => 0, 'message' => Text::_('PLG_RADICALFORM_RESET_NUMBER')];
 				Log::add(json_encode($entry), Log::NOTICE, 'plg_system_radicalform');
 
 				$this->setResponse('ok');
-			}
-			else
-			{
-				return false;
 			}
 		}
 
@@ -2284,10 +2332,11 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 		Factory::getApplication()->close(200);
 	}
 
-	protected function setErrorResponse($message, array $data = [])
+	protected function setErrorResponse($message, array $data = [], $status = 200)
 	{
+		http_response_code($status);
 		Factory::getApplication()->setHeader('Content-Type', 'application/json', true);
 		echo new JsonResponse($data, $message, true);
-		Factory::getApplication()->close(200);
+		Factory::getApplication()->close($status);
 	}
 }

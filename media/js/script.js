@@ -200,8 +200,13 @@ RadicalFormClass = function () {
 
             var filename = selfClass.closest(target.target, "div").querySelector("span").textContent,
                 catalog =  selfClass.closest(target.target, "div").dataset.name;
+            var deleteData = new FormData();
+            deleteData.append('deletefile', filename);
+            deleteData.append('uniq', selfClass.uniq);
+            deleteData.append('catalog', catalog);
+            deleteData.append(selfClass.formToken, '1');
 
-            request.open('POST', RadicalForm.Base + '/index.php?option=com_ajax&plugin=radicalform&format=json&group=system&deletefile=' + filename + '&uniq='+selfClass.uniq + '&catalog='+ catalog, true);
+            request.open('POST', RadicalForm.Base + '/index.php?option=com_ajax&plugin=radicalform&format=json&group=system&file=delete', true);
 
             request.onload = function() {
                 if (this.status >= 200 && this.status < 400) {
@@ -214,7 +219,7 @@ RadicalFormClass = function () {
                 }
             };
 
-            request.send();
+            request.send(deleteData);
 
         });
 
@@ -226,8 +231,62 @@ RadicalFormClass = function () {
         }
         if (!isFramed) {
             /* page loaded not in the frame - (Yootheme pagebuilder not loaded) */
-            if (container.querySelectorAll(".rf-button-send").length !== container.querySelectorAll(".rf-form .rf-button-send").length) {
-                alert('ERROR!\r\nThere is form without\r\n the CSS class .rf-form!\r\n Please add CSS class .rf-form to your form. ');
+            var invalidSendButtons = Array.from(container.querySelectorAll(".rf-button-send")).filter(function (el) {
+                return !el.parentElement || !selfClass.closest(el.parentElement, ".rf-form");
+            });
+
+            if (invalidSendButtons.length) {
+                var maxElementsInMessage = 5,
+                    errorLines = [
+                        "RadicalForm configuration error!",
+                        "",
+                        "Found " + invalidSendButtons.length + " element(s) with .rf-button-send outside .rf-form:",
+                        ""
+                    ];
+
+                invalidSendButtons.slice(0, maxElementsInMessage).forEach(function (el, index) {
+                    var elementText = (el.textContent || "").replace(/\s+/g, " ").trim(),
+                        elementDescription = "<" + el.tagName.toLowerCase();
+
+                    if (el.id) {
+                        elementDescription += "#" + el.id;
+                    }
+                    if (el.classList.length) {
+                        elementDescription += "." + Array.from(el.classList).join(".");
+                    }
+                    elementDescription += ">";
+
+                    if (elementText.length > 80) {
+                        elementText = elementText.substring(0, 77) + "...";
+                    }
+
+                    errorLines.push((index + 1) + ". " + elementDescription + (elementText ? ' — "' + elementText + '"' : ""));
+                });
+
+                if (invalidSendButtons.length > maxElementsInMessage) {
+                    errorLines.push("... and " + (invalidSendButtons.length - maxElementsInMessage) + " more element(s).");
+                }
+
+                errorLines.push(
+                    "",
+                    "Move each element inside .rf-form, or remove .rf-button-send if it is not a form submit button.",
+                    "Full element details are available in the browser console."
+                );
+
+                console.error(errorLines.join("\n"));
+                var useConsoleGroup = typeof console.groupCollapsed === "function";
+                if (useConsoleGroup) {
+                    console.groupCollapsed("RadicalForm: invalid .rf-button-send elements");
+                }
+                invalidSendButtons.forEach(function (el, index) {
+                    console.error("Element " + (index + 1) + ":", el);
+                    console.log(el.outerHTML);
+                });
+                if (useConsoleGroup && typeof console.groupEnd === "function") {
+                    console.groupEnd();
+                }
+
+                alert(errorLines.join("\r\n"));
             } else if (container.querySelectorAll(".rf-filenames-list").length !== container.querySelectorAll(".rf-form .rf-filenames-list").length) {
                 alert('ERROR!\r\nThere is \r\n.rf-filenames-list\r\n outside of form!\r\n Please move .rf-filenames-list inside the form. ');
             }

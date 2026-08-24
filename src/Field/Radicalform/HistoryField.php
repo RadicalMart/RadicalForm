@@ -16,6 +16,7 @@ namespace Joomla\Plugin\System\RadicalForm\Field\Radicalform;
 use Joomla\CMS\Factory;
 use Joomla\CMS\Form\FormField;
 use Joomla\CMS\Language\Text;
+use Joomla\CMS\Session\Session;
 use Joomla\CMS\Uri\Uri;
 use Joomla\Database\DatabaseInterface;
 use Joomla\Plugin\System\RadicalForm\Helper\RadicalFormHelper;
@@ -160,13 +161,14 @@ class HistoryField extends FormField
 
 		if ($cnt)
 		{
+			$formToken = Session::getFormToken();
 			$logSizeLabel = $logType === 'spam' ? Text::_('PLG_RADICALFORM_SPAM_HISTORY_SIZE') : Text::_('PLG_RADICALFORM_HISTORY_SIZE');
 			$html = "<p class='firstEntry'>" . $logSizeLabel . "<strong>" . filesize($log_path . '/' . $logFileName) . "</strong> " . Text::_('PLG_RADICALFORM_HISTORY_BYTE') . $warningAboutRotation . $pluginsInfo . "</p>";
-			$html .= "<p class='historytable'><button class='btn btn-danger' id='historyclear'>" . Text::sprintf('PLG_RADICALFORM_HISTORY_CLEAR', $logLabel) .
+			$html .= "<p class='historytable'><button class='btn btn-danger' id='historyclear' data-token='{$formToken}'>" . Text::sprintf('PLG_RADICALFORM_HISTORY_CLEAR', $logLabel) .
 				"</button>";
 			if ($logType !== 'spam')
 			{
-				$html .= " <button class='btn btn-outline-danger' id='numberclear'>" . Text::_('PLG_RADICALFORM_HISTORY_NUMBER_CLEAR') . "</button>";
+				$html .= " <button class='btn btn-outline-danger' id='numberclear' data-token='{$formToken}'>" . Text::_('PLG_RADICALFORM_HISTORY_NUMBER_CLEAR') . "</button>";
 			}
 			$html .= " <span class='pull-right float-end'><a href='index.php?option=com_ajax&plugin=radicalform&format=raw&group=system&admin=4&page={$pageNumber}&log={$logType}' class='btn btn-outline-primary exportcsv'>" . Text::sprintf('PLG_RADICALFORM_EXPORT_CSV', $logLabel) .
 				"</a></span></p>";
