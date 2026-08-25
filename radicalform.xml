@@ -15,8 +15,8 @@
     <authorUrl>https://radicalmart.ru</authorUrl>
     <copyright>Copyright (C) 2026 Progreccor. All rights reserved.</copyright>
     <license>GNU General Public License version 2 or later;</license>
-    <version>4.2.4</version>
-    <creationDate>2026-05-28</creationDate>
+    <version>4.2.5</version>
+    <creationDate>2026-08-25</creationDate>
     <description>PLG_RADICALFORM_DESC</description>
     <scriptfile>script.php</scriptfile>
     <namespace path="src">Joomla\Plugin\System\RadicalForm</namespace>
@@ -707,6 +707,48 @@
             </fieldset>
             <fieldset name="antispam" label="PLG_RADICALFORM_ANTISPAM">
                 <field
+                        name="js_challenge_note"
+                        type="note"
+                        class="alert alert-info input-xxlarge"
+                        label="PLG_RADICALFORM_JS_CHALLENGE"
+                        description="PLG_RADICALFORM_JS_CHALLENGE_DESC"
+                />
+                <field
+                        name="js_challenge_enabled"
+                        type="radio"
+                        label="PLG_RADICALFORM_JS_CHALLENGE_ENABLED"
+                        description="PLG_RADICALFORM_JS_CHALLENGE_ENABLED_DESC"
+                        class="btn-group btn-group-yesno"
+                        default="0"
+                >
+                    <option value="1">JON</option>
+                    <option value="0">JOFF</option>
+                </field>
+                <field
+                        name="js_challenge_delay_ms"
+                        type="number"
+                        label="PLG_RADICALFORM_JS_CHALLENGE_DELAY_MS"
+                        description="PLG_RADICALFORM_JS_CHALLENGE_DELAY_MS_DESC"
+                        default="350"
+                        min="100"
+                        max="1000"
+                        step="50"
+                        filter="integer"
+                        showon="js_challenge_enabled:1"
+                />
+                <field
+                        name="js_challenge_message"
+                        type="text"
+                        label="PLG_RADICALFORM_JS_CHALLENGE_MESSAGE"
+                        description="PLG_RADICALFORM_JS_CHALLENGE_MESSAGE_DESC"
+                        required="false"
+                        default="PLG_RADICALFORM_JS_CHALLENGE_FAILED"
+                        class="input-xxlarge"
+                        filter="raw"
+                        showon="js_challenge_enabled:1"
+                />
+                <field type="spacer" name="js_challenge_spacer" hr="true"/>
+                <field
                         name="antispam_message"
                         type="text"
                         label="PLG_RADICALFORM_ANTISPAM_MESSAGE"
@@ -781,9 +823,112 @@
                 <field
                         name="antispam_regex_note"
                         type="note"
-                        class="alert alert-info input-xxlarge"
+                        class="alert alert-info w-100 rf-regex-examples"
                         label="PLG_RADICALFORM_CONTENT_RULE_REGEX_NOTE_LABEL"
                         description="PLG_RADICALFORM_CONTENT_RULE_REGEX_NOTE"
+                />
+                <field type="spacer" name="antiflood_spacer" hr="true"/>
+                <field
+                        name="burst_block_enabled"
+                        type="radio"
+                        label="PLG_RADICALFORM_BURST_BLOCK_ENABLED"
+                        description="PLG_RADICALFORM_BURST_BLOCK_ENABLED_DESC"
+                        class="btn-group btn-group-yesno"
+                        default="0"
+                >
+                    <option value="1">JON</option>
+                    <option value="0">JOFF</option>
+                </field>
+                <field
+                        name="burst_block_note"
+                        type="note"
+                        class="alert alert-info input-xxlarge"
+                        label="PLG_RADICALFORM_BURST_BLOCKING"
+                        description="PLG_RADICALFORM_BURST_BLOCKING_DESC"
+                        showon="burst_block_enabled:1"
+                />
+                <field
+                        name="burst_max_submissions"
+                        type="number"
+                        label="PLG_RADICALFORM_BURST_MAX_SUBMISSIONS"
+                        description="PLG_RADICALFORM_BURST_MAX_SUBMISSIONS_DESC"
+                        default="30"
+                        min="1"
+                        step="1"
+                        filter="integer"
+                        showon="burst_block_enabled:1"
+                />
+                <field
+                        name="burst_observation_minutes"
+                        type="number"
+                        label="PLG_RADICALFORM_BURST_OBSERVATION_MINUTES"
+                        description="PLG_RADICALFORM_BURST_OBSERVATION_MINUTES_DESC"
+                        default="10"
+                        min="1"
+                        step="1"
+                        filter="integer"
+                        showon="burst_block_enabled:1"
+                />
+                <field
+                        name="burst_block_minutes"
+                        type="number"
+                        label="PLG_RADICALFORM_BURST_BLOCK_MINUTES"
+                        description="PLG_RADICALFORM_BURST_BLOCK_MINUTES_DESC"
+                        default="60"
+                        min="1"
+                        step="1"
+                        filter="integer"
+                        showon="burst_block_enabled:1"
+                />
+                <field type="spacer" name="daily_block_spacer" hr="true"/>
+                <field
+                        name="daily_block_enabled"
+                        type="radio"
+                        label="PLG_RADICALFORM_DAILY_BLOCK_ENABLED"
+                        description="PLG_RADICALFORM_DAILY_BLOCK_ENABLED_DESC"
+                        class="btn-group btn-group-yesno"
+                        default="0"
+                >
+                    <option value="1">JON</option>
+                    <option value="0">JOFF</option>
+                </field>
+                <field
+                        name="daily_block_note"
+                        type="note"
+                        class="alert alert-info input-xxlarge"
+                        label="PLG_RADICALFORM_DAILY_BLOCKING"
+                        description="PLG_RADICALFORM_DAILY_BLOCKING_DESC"
+                        showon="daily_block_enabled:1"
+                />
+                <field
+                        name="daily_max_submissions"
+                        type="number"
+                        label="PLG_RADICALFORM_DAILY_MAX_SUBMISSIONS"
+                        description="PLG_RADICALFORM_DAILY_MAX_SUBMISSIONS_DESC"
+                        default="200"
+                        min="1"
+                        step="1"
+                        filter="integer"
+                        showon="daily_block_enabled:1"
+                />
+                <field type="spacer" name="antiflood_notification_spacer" hr="true"/>
+                <field
+                        name="antiflood_alert_email"
+                        type="email"
+                        label="PLG_RADICALFORM_ANTIFLOOD_ALERT_EMAIL"
+                        description="PLG_RADICALFORM_ANTIFLOOD_ALERT_EMAIL_DESC"
+                        required="false"
+                        class="input-xxlarge"
+                />
+                <field
+                        name="antiflood_message"
+                        type="text"
+                        label="PLG_RADICALFORM_ANTIFLOOD_MESSAGE"
+                        description="PLG_RADICALFORM_ANTIFLOOD_MESSAGE_DESC"
+                        required="false"
+                        default="PLG_RADICALFORM_ANTIFLOOD_BLOCKED"
+                        class="input-xxlarge"
+                        filter="raw"
                 />
             </fieldset>
             <fieldset name="list" label="PLG_RADICALFORM_HISTORY">

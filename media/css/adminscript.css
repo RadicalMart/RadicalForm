@@ -46,3 +46,50 @@
 .firstEntry strong {
     color: green;
 }
+
+.rf-regex-examples {
+    max-width: none;
+    width: 100%;
+}
+
+.rf-regex-examples .alert-heading,
+.rf-regex-examples > h4 {
+    border-bottom: 1px solid rgba(0, 0, 0, .15);
+    font-size: 1.25rem;
+    line-height: 1.4;
+    margin: 0 0 1rem;
+    padding-bottom: .75rem;
+}
+
+.rf-regex-examples-grid {
+    display: grid;
+    gap: 1rem 2rem;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.rf-regex-example code {
+    color: inherit;
+    display: block;
+    font-size: .95em;
+    margin-top: .25rem;
+    overflow-wrap: anywhere;
+    white-space: normal;
+}
+
+.rf-regex-examples-help {
+    border-top: 1px solid rgba(0, 0, 0, .15);
+    margin-top: 1rem;
+    padding-top: .75rem;
+}
+
+@media (max-width: 1199.98px) {
+    .rf-regex-examples-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 767.98px) {
+    .rf-regex-examples-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}

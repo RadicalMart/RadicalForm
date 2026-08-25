@@ -66,6 +66,26 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 	 */
 	private const UTM_SESSION_KEY = 'radicalform.utm';
 
+	private const JS_CHALLENGE_SESSION_KEY = 'radicalform.js_challenges';
+
+	private const JS_PERMIT_SESSION_KEY = 'radicalform.js_permits';
+
+	private const JS_CHALLENGE_TTL = 30;
+
+	private const JS_PERMIT_TTL = 60;
+
+	private const JS_CHALLENGE_DELAY_DEFAULT_MS = 350;
+
+	private const JS_CHALLENGE_DELAY_MIN_MS = 100;
+
+	private const JS_CHALLENGE_DELAY_MAX_MS = 1000;
+
+	private const JS_CHALLENGE_DELAY_TOLERANCE_MS = 50;
+
+	private const JS_CHALLENGE_MAX_ITEMS = 5;
+
+	private const JS_CHALLENGE_OPERATIONS = 16;
+
     /**
      * Field names used by Joomla to route com_ajax requests.
      *
@@ -78,7 +98,11 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
         'format',
         'module',
         'template',
-        'method'
+        'method',
+        'rfjsaction',
+        'rfjschallenge',
+        'rfjsproof',
+        'rfjspermit'
     ];
 
 	/**
@@ -340,7 +364,11 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 			'uniq',
 			'needToSendFiles',
 			'rf-time',
-			'rf-duration'
+			'rf-duration',
+			'rfJsAction',
+			'rfJsChallenge',
+			'rfJsProof',
+			'rfJsPermit'
 		];
 
 		foreach ($values as $value)
@@ -357,6 +385,215 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 		}
 
 		return $input;
+	}
+
+	private function getJsChallengeMessage(): string
+	{
+		$message = trim((string) $this->params->get('js_challenge_message', ''));
+
+		if ($message === '')
+		{
+			$message = 'PLG_RADICALFORM_JS_CHALLENGE_FAILED';
+		}
+
+		return Text::_($message);
+	}
+
+	private function getJsChallengeDelayMs(): int
+	{
+		$delay = (int) $this->params->get('js_challenge_delay_ms', self::JS_CHALLENGE_DELAY_DEFAULT_MS);
+
+		return min(self::JS_CHALLENGE_DELAY_MAX_MS, max(self::JS_CHALLENGE_DELAY_MIN_MS, $delay));
+	}
+
+	private function getJsChallengeMinimumDelaySeconds(?int $delayMs = null): float
+	{
+		$delayMs ??= $this->getJsChallengeDelayMs();
+
+		return max(0, ($delayMs - self::JS_CHALLENGE_DELAY_TOLERANCE_MS) / 1000);
+	}
+
+	private function getJsSessionItems(string $key, float $now): array
+	{
+		$session = $this->getApplication()->getSession();
+		$items   = (array) $session->get($key, []);
+
+		foreach ($items as $id => $item)
+		{
+			if (!is_array($item) || (float) ($item['expires_at'] ?? 0) < $now)
+			{
+				unset($items[$id]);
+			}
+		}
+
+		return $items;
+	}
+
+	private function limitJsSessionItems(array $items): array
+	{
+		uasort($items, function ($first, $second) {
+			return (float) ($first['created_at'] ?? 0) <=> (float) ($second['created_at'] ?? 0);
+		});
+
+		while (count($items) >= self::JS_CHALLENGE_MAX_ITEMS)
+		{
+			array_shift($items);
+		}
+
+		return $items;
+	}
+
+	private function checkJsChallengeRequestToken(): void
+	{
+		$session = $this->getApplication()->getSession();
+
+		if ($session->isNew() || !Session::checkToken('post'))
+		{
+			$this->setErrorResponse(Text::_('JINVALID_TOKEN'), [], 403);
+		}
+	}
+
+	private function createJsChallenge(): array
+	{
+		$this->checkJsChallengeRequestToken();
+
+		$now        = microtime(true);
+		$challenge  = bin2hex(random_bytes(16));
+		$seed       = random_int(1, 0x7ffffffe);
+		$value      = $seed;
+		$operations = [];
+		$delayMs    = $this->getJsChallengeDelayMs();
+
+		for ($index = 0; $index < self::JS_CHALLENGE_OPERATIONS; $index++)
+		{
+			$type = random_int(0, 2);
+
+			if ($type === 0)
+			{
+				$operand = random_int(1, 0x7ffffffe);
+				$value        = ($value + $operand) & 0x7fffffff;
+				$operations[] = ['add', $operand];
+			}
+			elseif ($type === 1)
+			{
+				$operand = random_int(1, 0x7ffffffe);
+				$value        = ($value ^ $operand) & 0x7fffffff;
+				$operations[] = ['xor', $operand];
+			}
+			else
+			{
+				$operand = random_int(3, 65535) | 1;
+				$value        = ($value * $operand) & 0x7fffffff;
+				$operations[] = ['mul', $operand];
+			}
+		}
+
+		$session    = $this->getApplication()->getSession();
+		$challenges = $this->limitJsSessionItems(
+			$this->getJsSessionItems(self::JS_CHALLENGE_SESSION_KEY, $now)
+		);
+		$challenges[$challenge] = [
+			'proof'         => (string) $value,
+			'created_at'    => $now,
+			'expires_at'    => $now + self::JS_CHALLENGE_TTL,
+			'minimum_delay' => $this->getJsChallengeMinimumDelaySeconds($delayMs)
+		];
+		$session->set(self::JS_CHALLENGE_SESSION_KEY, $challenges);
+
+		return [
+			'challenge'        => $challenge,
+			'seed'             => $seed,
+			'operations'       => $operations,
+			'minimumDelayMs'   => $delayMs,
+			'expiresInSeconds' => self::JS_CHALLENGE_TTL
+		];
+	}
+
+	private function solveJsChallenge(string $challenge, string $proof): array
+	{
+		$this->checkJsChallengeRequestToken();
+
+		$now        = microtime(true);
+		$session    = $this->getApplication()->getSession();
+		$challenges = $this->getJsSessionItems(self::JS_CHALLENGE_SESSION_KEY, $now);
+		$item       = $challenges[$challenge] ?? null;
+
+		unset($challenges[$challenge]);
+		$session->set(self::JS_CHALLENGE_SESSION_KEY, $challenges);
+
+		if (
+			!is_array($item)
+			|| !ctype_digit($proof)
+			|| ($now - (float) $item['created_at']) < (float) ($item['minimum_delay'] ?? $this->getJsChallengeMinimumDelaySeconds())
+			|| !hash_equals((string) $item['proof'], $proof)
+		)
+		{
+			$this->setErrorResponse($this->getJsChallengeMessage(), [], 403);
+		}
+
+		$permit     = bin2hex(random_bytes(32));
+		$permitHash = hash('sha256', $permit);
+		$permits    = $this->limitJsSessionItems(
+			$this->getJsSessionItems(self::JS_PERMIT_SESSION_KEY, $now)
+		);
+		$permits[$permitHash] = [
+			'created_at' => $now,
+			'expires_at' => $now + self::JS_PERMIT_TTL
+		];
+		$session->set(self::JS_PERMIT_SESSION_KEY, $permits);
+
+		return [
+			'permit'           => $permit,
+			'expiresInSeconds' => self::JS_PERMIT_TTL
+		];
+	}
+
+	private function handleJsChallengeRequest(array $request): void
+	{
+		if (!$this->params->get('js_challenge_enabled', 0))
+		{
+			$this->setErrorResponse($this->getJsChallengeMessage(), [], 403);
+		}
+
+		$action = (string) ($request['action'] ?? '');
+
+		if ($action === 'challenge')
+		{
+			$this->setResponse($this->createJsChallenge());
+		}
+
+		if ($action === 'solve')
+		{
+			$this->setResponse($this->solveJsChallenge(
+				trim((string) ($request['challenge'] ?? '')),
+				trim((string) ($request['proof'] ?? ''))
+			));
+		}
+
+		$this->setErrorResponse($this->getJsChallengeMessage(), [], 400);
+	}
+
+	private function consumeJsPermit(string $permit): bool
+	{
+		if (!$this->params->get('js_challenge_enabled', 0))
+		{
+			return true;
+		}
+
+		$now        = microtime(true);
+		$session    = $this->getApplication()->getSession();
+		$permits    = $this->getJsSessionItems(self::JS_PERMIT_SESSION_KEY, $now);
+		$permitHash = preg_match('/^[a-f0-9]{64}$/D', $permit) ? hash('sha256', $permit) : '';
+		$valid      = $permitHash !== '' && isset($permits[$permitHash]);
+
+		if ($valid)
+		{
+			unset($permits[$permitHash]);
+		}
+
+		$session->set(self::JS_PERMIT_SESSION_KEY, $permits);
+
+		return $valid;
 	}
 
     private function getReservedFieldNames(array ...$sources): array
@@ -798,6 +1035,14 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 		$entry               = $input;
 		$entry['rfAntiSpam'] = $reason;
 
+		foreach (array_keys($entry) as $key)
+		{
+			if (is_string($key) && str_starts_with(strtolower($key), 'rfantiflood'))
+			{
+				unset($entry[$key]);
+			}
+		}
+
 		unset($entry['uniq']);
 		unset($entry[Session::getFormToken()]);
 
@@ -822,6 +1067,386 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 		$this->clearSpamLogFileByMaxSize();
 
 		Log::add(json_encode($entry), Log::WARNING, 'plg_system_radicalform_spam');
+	}
+
+	private function getAntiFloodMessage(): string
+	{
+		$message = trim((string) $this->params->get('antiflood_message', ''));
+
+		if ($message === '')
+		{
+			$message = 'PLG_RADICALFORM_ANTIFLOOD_BLOCKED';
+		}
+
+		return Text::_($message);
+	}
+
+	private function getLogFilesByRecency(string $baseFileName): array
+	{
+		$logPath = str_replace('\\', '/', $this->getApplication()->get('log_path'));
+		$files   = [];
+
+		if (file_exists($logPath . '/' . $baseFileName))
+		{
+			$files[0] = $logPath . '/' . $baseFileName;
+		}
+
+		foreach (glob($logPath . '/*.' . $baseFileName) as $filename)
+		{
+			$page = strstr(basename($filename), '.', true);
+
+			if ($page === false || !ctype_digit($page))
+			{
+				continue;
+			}
+
+			$files[(int) $page] = $filename;
+		}
+
+		ksort($files, SORT_NUMERIC);
+
+		return array_values($files);
+	}
+
+	private function getLogTimestamp($value): ?int
+	{
+		$value = trim((string) $value);
+
+		if ($value === '')
+		{
+			return null;
+		}
+
+		try
+		{
+			return (new \DateTimeImmutable($value, new \DateTimeZone('UTC')))->getTimestamp();
+		}
+		catch (\Throwable)
+		{
+			return null;
+		}
+	}
+
+	private function isSentFormLogEntry($entry): bool
+	{
+		if (!is_array($entry) || !array_key_exists('rfLatestNumber', $entry))
+		{
+			return false;
+		}
+
+		$submissionFields = array_diff(array_keys($entry), ['rfLatestNumber', 'message', 'rfWarningMessage']);
+
+		return $submissionFields !== [];
+	}
+
+	private function countSentForms(?int $burstStartedAt, ?int $dayStartedAt): array
+	{
+		$counts = [
+			'burst' => 0,
+			'daily' => 0
+		];
+		$cutoffs = array_filter([$burstStartedAt, $dayStartedAt], function ($value) {
+			return $value !== null;
+		});
+
+		if ($cutoffs === [])
+		{
+			return $counts;
+		}
+
+		$oldestCutoff = min($cutoffs);
+
+		foreach ($this->getLogFilesByRecency('plg_system_radicalform.php') as $file)
+		{
+			$newestTimestamp = null;
+
+			foreach (RadicalFormHelper::getCSV($file, "\t") as $record)
+			{
+				if (count($record) < 3 || str_starts_with((string) $record[0], '#'))
+				{
+					continue;
+				}
+
+				$timestamp = $this->getLogTimestamp($record[0]);
+
+				if ($timestamp === null)
+				{
+					continue;
+				}
+
+				$newestTimestamp = $newestTimestamp === null ? $timestamp : max($newestTimestamp, $timestamp);
+
+				if ($timestamp < $oldestCutoff)
+				{
+					continue;
+				}
+
+				$entry = json_decode($record[2], true);
+
+				if (!$this->isSentFormLogEntry($entry))
+				{
+					continue;
+				}
+
+				if ($burstStartedAt !== null && $timestamp >= $burstStartedAt)
+				{
+					$counts['burst']++;
+				}
+
+				if ($dayStartedAt !== null && $timestamp >= $dayStartedAt)
+				{
+					$counts['daily']++;
+				}
+			}
+
+			if ($newestTimestamp !== null && $newestTimestamp < $oldestCutoff)
+			{
+				break;
+			}
+		}
+
+		return $counts;
+	}
+
+	private function getActiveAntiFloodBlock(int $now, int $dayStartedAt, bool $burstEnabled, bool $dailyEnabled, int $blockMinutes): ?array
+	{
+		$cutoffs = [];
+
+		if ($burstEnabled)
+		{
+			$cutoffs[] = $now - ($blockMinutes * 60);
+		}
+
+		if ($dailyEnabled)
+		{
+			$cutoffs[] = $dayStartedAt;
+		}
+
+		$oldestCutoff = min($cutoffs);
+
+		$activeBlock = null;
+
+		foreach ($this->getLogFilesByRecency('plg_system_radicalform_spam.php') as $file)
+		{
+			$newestTimestamp = null;
+
+			foreach (RadicalFormHelper::getCSV($file, "\t") as $record)
+			{
+				if (count($record) < 3 || str_starts_with((string) $record[0], '#'))
+				{
+					continue;
+				}
+
+				$timestamp = $this->getLogTimestamp($record[0]);
+
+				if ($timestamp === null)
+				{
+					continue;
+				}
+
+				$newestTimestamp = $newestTimestamp === null ? $timestamp : max($newestTimestamp, $timestamp);
+
+				if ($timestamp < $oldestCutoff)
+				{
+					continue;
+				}
+
+				$entry = json_decode($record[2], true);
+
+				if (!is_array($entry) || empty($entry['rfAntiFlood']) || empty($entry['rfAntiFloodBlockedUntil']))
+				{
+					continue;
+				}
+
+				$type = (string) $entry['rfAntiFlood'];
+
+				if (!in_array($type, ['burst', 'daily'], true))
+				{
+					continue;
+				}
+
+				if (($type === 'burst' && !$burstEnabled) || ($type === 'daily' && !$dailyEnabled))
+				{
+					continue;
+				}
+
+				$blockedUntil = $this->getLogTimestamp($entry['rfAntiFloodBlockedUntil']);
+
+				if ($blockedUntil === null || $blockedUntil <= $now)
+				{
+					continue;
+				}
+
+				if ($activeBlock === null || $blockedUntil > $activeBlock['blocked_until'])
+				{
+					$activeBlock = [
+						'type'           => $type,
+						'count'          => (int) ($entry['rfAntiFloodCount'] ?? 0),
+						'limit'          => (int) ($entry['rfAntiFloodLimit'] ?? 0),
+						'period_minutes' => (int) ($entry['rfAntiFloodPeriodMinutes'] ?? 0),
+						'started_at'     => $timestamp,
+						'blocked_until'  => $blockedUntil
+					];
+				}
+			}
+
+			if ($newestTimestamp !== null && $newestTimestamp < $oldestCutoff)
+			{
+				break;
+			}
+		}
+
+		return $activeBlock;
+	}
+
+	private function getSiteTimezone(): \DateTimeZone
+	{
+		try
+		{
+			return new \DateTimeZone((string) $this->getApplication()->get('offset', 'UTC'));
+		}
+		catch (\Throwable)
+		{
+			return new \DateTimeZone('UTC');
+		}
+	}
+
+	private function formatAntiFloodDate(int $timestamp, string $format = DATE_ATOM): string
+	{
+		return (new \DateTimeImmutable('@' . $timestamp))
+			->setTimezone($this->getSiteTimezone())
+			->format($format);
+	}
+
+	private function sendAntiFloodAlert(array $block): void
+	{
+		$email = trim((string) $this->params->get('antiflood_alert_email', ''));
+
+		if ($email === '' || filter_var($email, FILTER_VALIDATE_EMAIL) === false)
+		{
+			return;
+		}
+
+		$typeLabel = $block['type'] === 'daily'
+			? Text::_('PLG_RADICALFORM_DAILY_BLOCKING')
+			: Text::_('PLG_RADICALFORM_BURST_BLOCKING');
+		$periodLabel = $block['type'] === 'daily'
+			? Text::_('PLG_RADICALFORM_CURRENT_CALENDAR_DAY')
+			: Text::sprintf('PLG_RADICALFORM_MINUTES', $block['period_minutes']);
+		$site = Uri::root();
+		$host = parse_url($site, PHP_URL_HOST) ?: $site;
+
+		try
+		{
+			$mailer = Factory::getContainer()->get(MailerFactoryInterface::class)->createMailer();
+			$mailer->setSender([
+				$this->getApplication()->get('mailfrom'),
+				$this->getApplication()->get('fromname')
+			]);
+			$mailer->addRecipient($email);
+			$mailer->setSubject(Text::sprintf('PLG_RADICALFORM_ANTIFLOOD_ALERT_SUBJECT', $host));
+			$mailer->isHtml(false);
+			$mailer->setBody(implode("\n", [
+				Text::sprintf('PLG_RADICALFORM_ANTIFLOOD_ALERT_TYPE', $typeLabel),
+				Text::sprintf('PLG_RADICALFORM_ANTIFLOOD_ALERT_COUNT', $block['count']),
+				Text::sprintf('PLG_RADICALFORM_ANTIFLOOD_ALERT_LIMIT', $block['limit']),
+				Text::sprintf('PLG_RADICALFORM_ANTIFLOOD_ALERT_PERIOD', $periodLabel),
+				Text::sprintf('PLG_RADICALFORM_ANTIFLOOD_ALERT_STARTED', $this->formatAntiFloodDate($block['started_at'], 'd.m.Y H:i:s')),
+				Text::sprintf('PLG_RADICALFORM_ANTIFLOOD_ALERT_UNTIL', $this->formatAntiFloodDate($block['blocked_until'], 'd.m.Y H:i:s')),
+				Text::sprintf('PLG_RADICALFORM_ANTIFLOOD_ALERT_SITE', $site)
+			]));
+
+			if ($mailer->send() === false)
+			{
+				throw new \RuntimeException(Text::_('PLG_RADICALFORM_ANTIFLOOD_ALERT_SEND_FAILED'));
+			}
+		}
+		catch (\Throwable $e)
+		{
+			$this->logSpamBlock([
+				'rfAntiSpam'            => $typeLabel,
+				'rfAntiFloodAlertError' => $e->getMessage()
+			]);
+		}
+	}
+
+	private function activateAntiFloodBlock(array $block): void
+	{
+		$typeLabel = $block['type'] === 'daily'
+			? Text::_('PLG_RADICALFORM_DAILY_BLOCKING')
+			: Text::_('PLG_RADICALFORM_BURST_BLOCKING');
+
+		$this->logSpamBlock([
+			'rfAntiSpam'                  => $typeLabel,
+			'rfAntiFlood'                 => $block['type'],
+			'rfAntiFloodCount'            => $block['count'],
+			'rfAntiFloodLimit'            => $block['limit'],
+			'rfAntiFloodPeriodMinutes'    => $block['period_minutes'],
+			'rfAntiFloodStartedAt'        => $this->formatAntiFloodDate($block['started_at']),
+			'rfAntiFloodBlockedUntil'     => $this->formatAntiFloodDate($block['blocked_until']),
+			'rfWarningMessage'            => Text::_('PLG_RADICALFORM_ANTIFLOOD_TRIGGERED')
+		]);
+
+		$this->sendAntiFloodAlert($block);
+	}
+
+	private function checkAntiFlood(): ?array
+	{
+		$burstEnabled = (bool) $this->params->get('burst_block_enabled', 0);
+		$dailyEnabled = (bool) $this->params->get('daily_block_enabled', 0);
+
+		if (!$burstEnabled && !$dailyEnabled)
+		{
+			return null;
+		}
+
+		$burstLimit       = max(1, (int) $this->params->get('burst_max_submissions', 30));
+		$observationMins  = max(1, (int) $this->params->get('burst_observation_minutes', 10));
+		$blockMinutes     = max(1, (int) $this->params->get('burst_block_minutes', 60));
+		$dailyLimit       = max(1, (int) $this->params->get('daily_max_submissions', 200));
+		$nowDate          = new \DateTimeImmutable('now', $this->getSiteTimezone());
+		$now              = $nowDate->getTimestamp();
+		$dayStartedAt     = $nowDate->setTime(0, 0)->getTimestamp();
+		$activeBlock      = $this->getActiveAntiFloodBlock($now, $dayStartedAt, $burstEnabled, $dailyEnabled, $blockMinutes);
+
+		if ($activeBlock !== null)
+		{
+			return $activeBlock;
+		}
+
+		$burstStartedAt = $burstEnabled ? $now - ($observationMins * 60) : null;
+		$counts         = $this->countSentForms($burstStartedAt, $dailyEnabled ? $dayStartedAt : null);
+		$block          = null;
+
+		if ($dailyEnabled && $counts['daily'] >= $dailyLimit)
+		{
+			$block = [
+				'type'           => 'daily',
+				'count'          => $counts['daily'],
+				'limit'          => $dailyLimit,
+				'period_minutes' => 1440,
+				'started_at'     => $now,
+				'blocked_until'  => $nowDate->modify('+1 day')->setTime(0, 0)->getTimestamp()
+			];
+		}
+		elseif ($burstEnabled && $counts['burst'] >= $burstLimit)
+		{
+			$block = [
+				'type'           => 'burst',
+				'count'          => $counts['burst'],
+				'limit'          => $burstLimit,
+				'period_minutes' => $observationMins,
+				'started_at'     => $now,
+				'blocked_until'  => $now + ($blockMinutes * 60)
+			];
+		}
+
+		if ($block !== null)
+		{
+			$this->activateAntiFloodBlock($block);
+		}
+
+		return $block;
 	}
 
 	private function clearSpamLogFileByMaxSize()
@@ -950,6 +1575,8 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 				'TokenExpire'         => $refreshTime * 1000,
 				'DeleteColor'         => $this->params->get('buttondeletecolor', "#fafafa"),
 				'DeleteBackground'    => $this->params->get('buttondeletecolorbackground', "#f44336"),
+				'JsChallengeEnabled'  => (int) $this->params->get('js_challenge_enabled', 0),
+				'JsChallengeMessage'  => $this->getJsChallengeMessage(),
                 'ReservedFieldNames'   => self::RESERVED_FIELD_NAMES,
                 'ReservedFieldMessage' => Text::_('PLG_RADICALFORM_RESERVED_FIELD_NAMES')
 			);
@@ -1360,6 +1987,19 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 		$files   = $r->files->getArray();
 		$request = $this->getApplication()->isClient('administrator') ? array_merge($get, $input) : $get;
 		$admin   = $request['admin'] ?? null;
+		$jsRequest = [
+			'action'    => $input['rfJsAction'] ?? '',
+			'challenge' => $input['rfJsChallenge'] ?? '',
+			'proof'     => $input['rfJsProof'] ?? ''
+		];
+		$jsPermit = trim((string) ($input['rfJsPermit'] ?? ''));
+
+		unset($input['rfJsAction'], $input['rfJsChallenge'], $input['rfJsProof'], $input['rfJsPermit']);
+
+		if ($jsRequest['action'] !== '')
+		{
+			$this->handleJsChallengeRequest($jsRequest);
+		}
 
         $reservedFieldNames = $this->getReservedFieldNames($input, $files);
 
@@ -1819,6 +2459,17 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 			$this->setResponse(Text::_('PLG_RADICALFORM_INVALID_TOKEN'));
 		};
 
+		if ((string) ($get['file'] ?? '') !== '1' && !$this->consumeJsPermit($jsPermit))
+		{
+			$message = $this->getJsChallengeMessage();
+			$this->logSpamBlock([
+				'message'    => $message,
+				'rfAntiSpam' => 'javascript challenge'
+			]);
+
+			$this->setResponse($message);
+		}
+
 		// Restore UTM parameters from session if not already present in submitted data
 		if ($this->params->get('track_utm', 0))
 		{
@@ -1869,6 +2520,11 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 			$this->logAntiSpamBlock($input, $antiSpamReason);
 
 			$this->setResponse($this->getAntiSpamMessage());
+		}
+
+		if ($this->checkAntiFlood() !== null)
+		{
+			$this->setResponse($this->getAntiFloodMessage());
 		}
 
 		$mailer = Factory::getContainer()->get(MailerFactoryInterface::class)->createMailer();

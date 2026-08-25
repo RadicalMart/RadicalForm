@@ -10,6 +10,7 @@ RadicalFormClass = function () {
 
     var selfClass = this;
     this.formToken = '';
+    this.formTokenPromise = null;
 
     /**
      * get uniq id for upload a file.
@@ -117,6 +118,110 @@ RadicalFormClass = function () {
         }
     };
 
+    this.postJsChallengeRequest = function(action, values) {
+        var tokenPromise = selfClass.formTokenPromise || Promise.resolve(selfClass.formToken);
+
+        return tokenPromise.then(function(token) {
+            if (!token) {
+                throw new Error(RadicalForm.JsChallengeMessage);
+            }
+
+            return new Promise(function(resolve, reject) {
+                var request = new XMLHttpRequest(),
+                    data = new FormData(),
+                    requestUrl = RadicalForm.Base + '/index.php?option=com_ajax&plugin=radicalform&group=system&format=json';
+
+                data.append('rfJsAction', action);
+                data.append(token, '1');
+
+                Object.keys(values || {}).forEach(function(key) {
+                    data.append(key, values[key]);
+                });
+
+                request.open('POST', requestUrl, true);
+                request.onreadystatechange = function() {
+                    if (this.readyState !== 4) {
+                        return;
+                    }
+
+                    var response = false;
+
+                    try {
+                        response = JSON.parse(this.response);
+                    } catch (e) {
+                        reject(new Error(RadicalForm.JsChallengeMessage));
+                        return;
+                    }
+
+                    if (this.status >= 200 && this.status < 400 && response.success && response.data && response.data[0]) {
+                        resolve(response.data[0]);
+                        return;
+                    }
+
+                    reject(new Error(response.message || RadicalForm.JsChallengeMessage));
+                };
+                request.onerror = function() {
+                    reject(new Error(RadicalForm.JsChallengeMessage));
+                };
+                request.send(data);
+            });
+        });
+    };
+
+    this.solveJsChallenge = function(challenge) {
+        var value = Number(challenge.seed) & 0x7fffffff;
+
+        if (!Array.isArray(challenge.operations)) {
+            throw new Error(RadicalForm.JsChallengeMessage);
+        }
+
+        challenge.operations.forEach(function(operation) {
+            var operand = Number(operation[1]) & 0x7fffffff;
+
+            switch (operation[0]) {
+                case 'add':
+                    value = (value + operand) & 0x7fffffff;
+                    break;
+                case 'xor':
+                    value = (value ^ operand) & 0x7fffffff;
+                    break;
+                case 'mul':
+                    value = Math.imul(value, operand) & 0x7fffffff;
+                    break;
+                default:
+                    throw new Error(RadicalForm.JsChallengeMessage);
+            }
+        });
+
+        return String(value);
+    };
+
+    this.getJsPermit = function() {
+        if (Number(RadicalForm.JsChallengeEnabled) !== 1) {
+            return Promise.resolve('');
+        }
+
+        return selfClass.postJsChallengeRequest('challenge').then(function(challenge) {
+            var proof = selfClass.solveJsChallenge(challenge),
+                delay = Math.max(0, Number(challenge.minimumDelayMs) || 0);
+
+            return new Promise(function(resolve) {
+                window.setTimeout(resolve, delay);
+            }).then(function() {
+                return selfClass.postJsChallengeRequest('solve', {
+                    rfJsChallenge: challenge.challenge,
+                    rfJsProof: proof
+                });
+            });
+        }).then(function(result) {
+            if (!result.permit) {
+                throw new Error(RadicalForm.JsChallengeMessage);
+            }
+
+            return result.permit;
+        });
+    };
+
     if (RadicalForm.KeepAlive != 0) {
         window.setInterval(function() {
 
@@ -169,17 +274,28 @@ RadicalFormClass = function () {
         AjaxFormDataforToken.append('gettoken', '1');
         request1.open('POST', RadicalForm.Base + '/index.php?option=com_ajax&plugin=radicalform&format=json&group=system', true);
 
-        request1.onload = function() {
-            if (this.status >= 200 && this.status < 400) {
-                // Success!
-                var data = JSON.parse(this.response);
-                selfClass.formToken = data.data[0];
-                [].forEach.call(container.querySelectorAll('.rf-form .rf-button-send'), function (el) {
-                    el.insertAdjacentHTML('afterend', '<input type="hidden" name="'+data.data[0]+'" value="1" />');
-                });
-            }
+        selfClass.formTokenPromise = new Promise(function(resolve) {
+            request1.onload = function() {
+                if (this.status >= 200 && this.status < 400) {
+                    try {
+                        var data = JSON.parse(this.response);
+                        selfClass.formToken = data.data[0];
+                        [].forEach.call(container.querySelectorAll('.rf-form .rf-button-send'), function (el) {
+                            el.insertAdjacentHTML('afterend', '<input type="hidden" name="'+data.data[0]+'" value="1" />');
+                        });
+                        resolve(selfClass.formToken);
+                        return;
+                    } catch (e) {
+                        console.error('RadicalForm token response: ', e);
+                    }
+                }
 
-        };
+                resolve('');
+            };
+            request1.onerror = function() {
+                resolve('');
+            };
+        });
         request1.send(AjaxFormDataforToken);
 
         this.on(container, ".rf-form ." + selfClass.danger_classes.join('.'), 'keypress', function (target, e) {
@@ -491,7 +607,20 @@ RadicalFormClass = function () {
                 }
             }
 
-            var  request = new XMLHttpRequest(),
+            var tokenPromise = selfClass.formTokenPromise || Promise.resolve(selfClass.formToken);
+
+            tokenPromise.then(function(token) {
+                if (token) {
+                    AjaxFormData.set(token, '1');
+                }
+
+                return selfClass.getJsPermit();
+            }).then(function(permit) {
+                if (permit) {
+                    AjaxFormData.append('rfJsPermit', permit);
+                }
+
+            var request = new XMLHttpRequest(),
                 requestUrl = RadicalForm.Base + "/index.php?option=com_ajax&plugin=radicalform&group=system&format=json";
             request.open('POST', requestUrl);
             request.send(AjaxFormData);
@@ -615,6 +744,19 @@ RadicalFormClass = function () {
                     }
                 }
             };
+            }).catch(function(error) {
+                buttonPressed.innerHTML = prevousButtonText;
+                buttonPressed.disabled = false;
+
+                var message = error && error.message ? error.message : RadicalForm.JsChallengeMessage;
+                console.error('RadicalForm JavaScript challenge: ', message);
+
+                try {
+                    rfCall_9(message, buttonPressed);
+                } catch (e) {
+                    console.error('Radical Form JS Code: ', e);
+                }
+            });
         }
         e.preventDefault();
     };
