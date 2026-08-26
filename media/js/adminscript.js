@@ -142,7 +142,8 @@ ready(function () {
 
 
         var request = new XMLHttpRequest();
-        request.open('GET', 'index.php?option=com_ajax&plugin=radicalform&format=json&group=system&admin=1', true);
+        request.open('POST', 'index.php?option=com_ajax&plugin=radicalform&format=json&group=system&admin=1', true);
+        request.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded; charset=UTF-8');
 
         request.onload = function() {
             if (this.status >= 200 && this.status < 400) {
@@ -198,9 +199,56 @@ ready(function () {
             radicalformcheck.innerHTML = temp;
         };
 
-        request.send();
+        request.send(encodeURIComponent(radicalformcheck.dataset.token) + '=1');
 
         event.preventDefault();
+        });
+    }
+
+    var radicalformCheckMaxConnectionButton = document.querySelector("#radicalformcheckmaxconnection");
+    if(radicalformCheckMaxConnectionButton)
+    {
+        radicalformCheckMaxConnectionButton.addEventListener('click', function (event) {
+            var button = document.querySelector("#radicalformcheckmaxconnection"),
+                temp = button.innerHTML,
+                resultContainer = document.querySelector("#radicalformmaxconnectionresult");
+            if(resultContainer) {
+                resultContainer.innerHTML = "";
+            }
+            button.innerHTML="Wait...";
+            button.disabled = true;
+
+            var request = new XMLHttpRequest();
+            request.open('POST', 'index.php?option=com_ajax&plugin=radicalform&format=json&group=system&admin=maxconnection', true);
+            request.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded; charset=UTF-8');
+
+            request.onload = function() {
+                if (this.status >= 200 && this.status < 400) {
+                    try {
+                        var data = JSON.parse(this.response),
+                            result = data.data[0],
+                            messages = {};
+                        messages[result.ok ? "success" : "danger"] = [result.message];
+                        Joomla.renderMessages(messages,"#radicalformmaxconnectionresult");
+                    } catch (error) {
+                        Joomla.renderMessages({"danger":["<strong>Error</strong><br>" + this.response]},"#radicalformmaxconnectionresult");
+                    }
+                } else {
+                    Joomla.renderMessages({"danger":["<strong>Error</strong><br>" + this.response]},"#radicalformmaxconnectionresult");
+                }
+                button.disabled = false;
+                button.innerHTML = temp;
+            };
+
+            request.onerror = function() {
+                Joomla.renderMessages({"danger":["<strong>Error</strong><br>Error connection"]},"#radicalformmaxconnectionresult");
+                button.disabled = false;
+                button.innerHTML = temp;
+            };
+
+            request.send(encodeURIComponent(button.dataset.token) + '=1');
+
+            event.preventDefault();
         });
     }
 
@@ -209,12 +257,17 @@ ready(function () {
     {
         radicalformCheckMaxButton.addEventListener('click', function (event) {
             var radicalformcheckmax=document.querySelector("#radicalformcheckmax"),
-                temp = radicalformcheckmax.innerHTML;
+                temp = radicalformcheckmax.innerHTML,
+                resultContainer = document.querySelector("#radicalformmaxresult");
+            if(resultContainer) {
+                resultContainer.innerHTML = "";
+            }
             radicalformcheckmax.innerHTML="Wait...";
             radicalformcheckmax.disabled = true;
 
             var request = new XMLHttpRequest();
-            request.open('GET', 'index.php?option=com_ajax&plugin=radicalform&format=json&group=system&admin=maxupdates', true);
+            request.open('POST', 'index.php?option=com_ajax&plugin=radicalform&format=json&group=system&admin=maxupdates', true);
+            request.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded; charset=UTF-8');
 
             request.onload = function() {
                 if (this.status >= 200 && this.status < 400) {
@@ -261,7 +314,7 @@ ready(function () {
                 radicalformcheckmax.innerHTML = temp;
             };
 
-            request.send();
+            request.send(encodeURIComponent(radicalformcheckmax.dataset.token) + '=1');
 
             event.preventDefault();
         });

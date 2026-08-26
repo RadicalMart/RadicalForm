@@ -629,6 +629,15 @@
                         showon="max:1"
                         filter="raw">
                 </field>
+                <field
+                        name="checkmaxconnection"
+                        type="radicalform_button"
+                        id="radicalformcheckmaxconnection"
+                        resultid="radicalformmaxconnectionresult"
+                        label=" "
+                        showon="max:1"
+                        value="PLG_RADICALFORM_MAX_CONNECTION_CHECK_LABEL"
+                />
                 <field name="maxrecipients" type="subform"
                        multiple="true"
                        label="PLG_RADICALFORM_MAX_RECIPIENTS_LABEL"

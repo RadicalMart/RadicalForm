@@ -86,6 +86,10 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 
 	private const JS_CHALLENGE_OPERATIONS = 16;
 
+	private const SPAM_LOG_VALUE_MAX_LENGTH = 4096;
+
+	private const SPAM_LOG_ENTRY_MAX_BYTES = 65536;
+
     /**
      * Field names used by Joomla to route com_ajax requests.
      *
@@ -314,7 +318,8 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 	private function canManagePlugin()
 	{
 		return $this->getApplication()->isClient('administrator')
-			&& $this->getApplication()->getIdentity()->authorise('core.manage', 'com_plugins');
+			&& $this->getApplication()->getIdentity()->authorise('core.manage', 'com_plugins')
+			&& $this->getApplication()->getIdentity()->authorise('core.edit', 'com_plugins');
 	}
 
 	/**
@@ -1043,30 +1048,138 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 			}
 		}
 
-		unset($entry['uniq']);
-		unset($entry[Session::getFormToken()]);
-
-		$entry = array_filter($entry, function ($value) {
-			return $value !== '';
-		});
+		$entry = $this->prepareSpamLogEntry($entry);
 
 		$this->clearSpamLogFileByMaxSize();
 
-		Log::add(json_encode($entry), Log::WARNING, 'plg_system_radicalform_spam');
+		Log::add($this->encodeSpamLogEntry($entry), Log::WARNING, 'plg_system_radicalform_spam');
 	}
 
 	private function logSpamBlock(array $entry)
 	{
-		unset($entry['uniq']);
-		unset($entry[Session::getFormToken()]);
+		$entry = $this->prepareSpamLogEntry($entry);
+
+		$this->clearSpamLogFileByMaxSize();
+
+		Log::add($this->encodeSpamLogEntry($entry), Log::WARNING, 'plg_system_radicalform_spam');
+	}
+
+	private function prepareSpamLogEntry(array $entry): array
+	{
+		$reservedFields = array_fill_keys(self::RESERVED_FIELD_NAMES, true);
+		$serviceFields  = [
+			'rfjsaction'     => true,
+			'rfjschallenge'  => true,
+			'rfjsproof'      => true,
+			'rfjspermit'     => true,
+			'rflogtruncated' => true,
+		];
+
+		foreach ($entry as $key => $value)
+		{
+			if (!is_string($key))
+			{
+				$entry[$key] = $this->truncateSpamLogValue($value);
+				continue;
+			}
+
+			$normalizedKey = strtolower($key);
+
+			if (
+				$key === 'uniq'
+				|| preg_match('/^[a-f0-9]{32}$/iD', $key)
+				|| isset($reservedFields[$normalizedKey])
+				|| isset($serviceFields[$normalizedKey])
+			)
+			{
+				unset($entry[$key]);
+				continue;
+			}
+
+			$entry[$key] = $this->truncateSpamLogValue($value);
+		}
 
 		$entry = array_filter($entry, function ($value) {
 			return $value !== '';
 		});
 
-		$this->clearSpamLogFileByMaxSize();
+		return $this->limitSpamLogEntrySize($entry);
+	}
 
-		Log::add(json_encode($entry), Log::WARNING, 'plg_system_radicalform_spam');
+	private function truncateSpamLogValue($value)
+	{
+		if (is_array($value))
+		{
+			foreach ($value as $key => $item)
+			{
+				$value[$key] = $this->truncateSpamLogValue($item);
+			}
+
+			return $value;
+		}
+
+		if (is_object($value))
+		{
+			return $this->truncateSpamLogValue((array) $value);
+		}
+
+		if (!is_string($value) || StringHelper::strlen($value) <= self::SPAM_LOG_VALUE_MAX_LENGTH)
+		{
+			return $value;
+		}
+
+		return StringHelper::substr($value, 0, self::SPAM_LOG_VALUE_MAX_LENGTH) . '…';
+	}
+
+	private function limitSpamLogEntrySize(array $entry): array
+	{
+		if (strlen($this->encodeSpamLogEntry($entry)) <= self::SPAM_LOG_ENTRY_MAX_BYTES)
+		{
+			return $entry;
+		}
+
+		$limitedEntry = ['rfLogTruncated' => true];
+		$orderedEntry = [];
+
+		foreach (['rfAntiSpam', 'rfWarningMessage'] as $priorityField)
+		{
+			if (array_key_exists($priorityField, $entry))
+			{
+				$orderedEntry[$priorityField] = $entry[$priorityField];
+				unset($entry[$priorityField]);
+			}
+		}
+
+		$orderedEntry += $entry;
+		$encodedSize  = strlen($this->encodeSpamLogEntry($limitedEntry));
+
+		foreach ($orderedEntry as $key => $value)
+		{
+			$encodedKey   = json_encode((string) $key, JSON_INVALID_UTF8_SUBSTITUTE);
+			$encodedValue = json_encode($value, JSON_INVALID_UTF8_SUBSTITUTE);
+
+			if (!is_string($encodedKey) || !is_string($encodedValue))
+			{
+				continue;
+			}
+
+			$additionalSize = 1 + strlen($encodedKey) + 1 + strlen($encodedValue);
+
+			if ($encodedSize + $additionalSize <= self::SPAM_LOG_ENTRY_MAX_BYTES)
+			{
+				$limitedEntry[$key] = $value;
+				$encodedSize       += $additionalSize;
+			}
+		}
+
+		return $limitedEntry;
+	}
+
+	private function encodeSpamLogEntry(array $entry): string
+	{
+		$encoded = json_encode($entry, JSON_INVALID_UTF8_SUBSTITUTE);
+
+		return is_string($encoded) ? $encoded : '{"rfLogTruncated":true}';
 	}
 
 	private function getAntiFloodMessage(): string
@@ -2240,9 +2353,17 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 			}
 		}
 
-		if (isset($get['admin']) && $get['admin'] == 1)
+		if ($admin == 1)
 		{
-			if ($this->getApplication()->isClient('administrator'))
+			if (!$this->canManagePlugin())
+			{
+				$this->setErrorResponse(Text::_('JERROR_ALERTNOAUTHOR'), [], 403);
+			}
+			elseif (!Session::checkToken('post'))
+			{
+				$this->setErrorResponse(Text::_('JINVALID_TOKEN'), [], 403);
+			}
+			else
 			{
 				// тут проверка телеграма на предмет обновлений диалогов (ловим chat_id)
 				$qv = "https://api.telegram.org/bot" . $this->params->get('telegramtoken') . "/getUpdates";
@@ -2301,22 +2422,84 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 
 				$this->setResponse(['ok' => true, 'chatids' => $chatIDs]);
 			}
+		}
+
+		if ($admin == 'maxconnection')
+		{
+			if (!$this->canManagePlugin())
+			{
+				$this->setErrorResponse(Text::_('JERROR_ALERTNOAUTHOR'), [], 403);
+			}
+			elseif (!Session::checkToken('post'))
+			{
+				$this->setErrorResponse(Text::_('JINVALID_TOKEN'), [], 403);
+			}
 			else
 			{
-				return false;
+				$token = trim((string) $this->params->get('maxtoken'));
+
+				if ($token === '')
+				{
+					$this->setResponse([
+						'ok'      => false,
+						'tls'     => null,
+						'message' => Text::_('PLG_RADICALFORM_MAX_CONNECTION_TOKEN_MISSING'),
+					]);
+				}
+
+				$connection = MaxHelper::checkConnection($token);
+
+				if ($connection['ok'])
+				{
+					$botName = htmlspecialchars((string) $connection['bot_name'], ENT_QUOTES, 'UTF-8');
+					$message = Text::sprintf('PLG_RADICALFORM_MAX_CONNECTION_SUCCESS', $botName);
+				}
+				elseif ($connection['tls'] === false)
+				{
+					$error   = htmlspecialchars((string) ($connection['error'] ?? ''), ENT_QUOTES, 'UTF-8');
+					$message = Text::sprintf('PLG_RADICALFORM_MAX_CONNECTION_TLS_ERROR', $error);
+				}
+				elseif ((int) ($connection['status_code'] ?? 0) === 401)
+				{
+					$message = Text::_('PLG_RADICALFORM_MAX_CONNECTION_TOKEN_ERROR');
+				}
+				elseif ($connection['tls'] === true)
+				{
+					$status  = (int) ($connection['status_code'] ?? 0);
+					$error   = htmlspecialchars((string) ($connection['error'] ?? ''), ENT_QUOTES, 'UTF-8');
+					$message = Text::sprintf('PLG_RADICALFORM_MAX_CONNECTION_API_ERROR', $status, $error);
+				}
+				else
+				{
+					$error   = htmlspecialchars((string) ($connection['error'] ?? ''), ENT_QUOTES, 'UTF-8');
+					$message = Text::sprintf('PLG_RADICALFORM_MAX_CONNECTION_NETWORK_ERROR', $error);
+				}
+
+				$this->setResponse([
+					'ok'      => (bool) $connection['ok'],
+					'tls'     => $connection['tls'],
+					'message' => $message,
+				]);
 			}
 		}
 
-		if (isset($get['admin']) && $get['admin'] == 'maxupdates')
+		if ($admin == 'maxupdates')
 		{
-			if ($this->getApplication()->isClient('administrator'))
+			if (!$this->canManagePlugin())
+			{
+				$this->setErrorResponse(Text::_('JERROR_ALERTNOAUTHOR'), [], 403);
+			}
+			elseif (!Session::checkToken('post'))
+			{
+				$this->setErrorResponse(Text::_('JINVALID_TOKEN'), [], 403);
+			}
+			else
 			{
 				$token     = trim((string) $this->params->get('maxtoken'));
 				$session   = $this->getApplication()->getSession();
 				$markerKey = 'radicalform.max.marker.' . md5($token);
 				$marker    = (string) $session->get($markerKey, '');
 				$updates   = MaxHelper::getUpdates($token, $marker !== '' ? $marker : null, $marker !== '' ? 30 : 0);
-				$chats     = MaxHelper::getChats($token);
 
 				if (isset($updates['status_code']) || isset($updates['error']))
 				{
@@ -2328,15 +2511,7 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 					$session->set($markerKey, (string) $updates['marker']);
 				}
 
-				if (isset($chats['status_code']) || isset($chats['error']))
-				{
-					$this->setResponse($chats);
-				}
-
-				$recipients = MaxHelper::mergeRecipients(
-					MaxHelper::extractRecipients($updates),
-					MaxHelper::extractChats($chats)
-				);
+				$recipients = MaxHelper::extractRecipients($updates);
 
 				$this->setResponse([
 					'ok'         => true,
@@ -2346,10 +2521,6 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 						? Text::_('PLG_RADICALFORM_MAX_MARKER_INITIALIZED')
 						: Text::_('PLG_RADICALFORM_MAX_NO_RECIPIENTS'),
 				]);
-			}
-			else
-			{
-				return false;
 			}
 		}
 
@@ -2438,10 +2609,10 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 
 		if (!isset($input['uniq']))
 		{
-			$this->logSpamBlock([
-				'message'    => Text::_('PLG_RADICALFORM_INVALID_TOKEN'),
-				'rfAntiSpam' => 'invalid token'
-			]);
+			$entry                     = $input;
+			$entry['rfWarningMessage'] = Text::_('PLG_RADICALFORM_INVALID_TOKEN');
+			$entry['rfAntiSpam']       = 'invalid token';
+			$this->logSpamBlock($entry);
 
 			$this->setResponse(['error' => Text::_('PLG_RADICALFORM_INVALID_TOKEN')]);
 		}
@@ -2450,11 +2621,10 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 
 		if ($this->getApplication()->getSession()->isNew() || !$this->getApplication()->getSession()->checkToken())
 		{
-			$input = [
-				'message'    => Text::_('PLG_RADICALFORM_INVALID_TOKEN'),
-				'rfAntiSpam' => 'invalid token'
-			];
-			$this->logSpamBlock($input);
+			$entry                     = $input;
+			$entry['rfWarningMessage'] = Text::_('PLG_RADICALFORM_INVALID_TOKEN');
+			$entry['rfAntiSpam']       = 'invalid token';
+			$this->logSpamBlock($entry);
 
 			$this->setResponse(Text::_('PLG_RADICALFORM_INVALID_TOKEN'));
 		};
@@ -2462,10 +2632,10 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 		if ((string) ($get['file'] ?? '') !== '1' && !$this->consumeJsPermit($jsPermit))
 		{
 			$message = $this->getJsChallengeMessage();
-			$this->logSpamBlock([
-				'message'    => $message,
-				'rfAntiSpam' => 'javascript challenge'
-			]);
+			$entry                     = $input;
+			$entry['rfWarningMessage'] = $message;
+			$entry['rfAntiSpam']       = 'javascript challenge';
+			$this->logSpamBlock($entry);
 
 			$this->setResponse($message);
 		}
@@ -2841,9 +3011,16 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 			$chatIDs = (array) $this->params->get('chatids');
 			foreach ($chatIDs as $chatID)
 			{
+				$chatTarget = trim((string) ($chatID->target ?? ''));
+
+				if (empty($chatID->chat_id))
+				{
+					continue;
+				}
+
 				if (
-					(($target !== false) && ($chatID->target == $target)) or
-					(empty(trim($chatID->target)) && ($target === false))
+					(($target !== false) && ($chatTarget == $target)) or
+					($chatTarget === '' && ($target === false))
 				)
 				{
 					$url = "https://api.telegram.org/bot" . $this->params->get('telegramtoken') . "/sendMessage?"
@@ -2867,7 +3044,36 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 					curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
 					curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 					curl_setopt($ch, CURLOPT_HEADER, 0);
-					curl_exec($ch);
+
+					$telegramResponse = curl_exec($ch);
+					$telegramStatus   = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+					$telegramError    = curl_error($ch);
+					$telegramResult   = is_string($telegramResponse)
+						? json_decode($telegramResponse, true)
+						: null;
+
+					curl_close($ch);
+
+					if (!(
+						$telegramResponse !== false
+						&& $telegramStatus >= 200
+						&& $telegramStatus < 300
+						&& is_array($telegramResult)
+						&& ($telegramResult['ok'] ?? false) === true
+					))
+					{
+						$telegramLogInput = [
+							'rfWarningMessage' => 'Telegram API send error',
+							'chat_id'          => (string) $chatID->chat_id,
+							'status_code'      => $telegramStatus,
+							'curl_error'       => $telegramError,
+							'response'         => is_array($telegramResult)
+								? $telegramResult
+								: (string) $telegramResponse,
+						];
+
+						Log::add(json_encode($telegramLogInput), Log::WARNING, 'plg_system_radicalform');
+					}
 				}
 			}
 		}
@@ -2887,18 +3093,31 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 					(empty(trim($recipient->target)) && ($target === false))
 				)
 				{
-					MaxHelper::sendMessage(
+					$maxResult = MaxHelper::sendMessage(
 						(string) $this->params->get('maxtoken'),
 						(string) $recipient->recipient_type,
 						(string) $recipient->recipient_id,
 						$telegram
 					);
+
+					if (isset($maxResult['status_code']) || isset($maxResult['error']))
+					{
+						$maxLogInput = [
+							'rfWarningMessage' => Text::_('PLG_RADICALFORM_MAX_SEND_ERROR'),
+							'recipient_type'   => (string) $recipient->recipient_type,
+							'recipient_id'     => (string) $recipient->recipient_id,
+							'response'         => $maxResult,
+						];
+
+						Log::add(json_encode($maxLogInput), Log::WARNING, 'plg_system_radicalform');
+					}
 				}
 			}
 		}
 
 		$textOutput = str_replace("<br />", " \r\n", $telegram);
 		$textOutput = str_replace(["<b>", "</b>"], "", $textOutput);
+		$messageLogLevel = Log::NOTICE;
 
 		if ($this->params->get('emailon'))
 		{
@@ -2950,22 +3169,18 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 					if ($send === false)
 					{
 						$emailLogInput["rfWarningMessage"] = Text::_('PLG_RADICALFORM_MAIL_DISABLED');
-						Log::add(json_encode($emailLogInput), Log::WARNING, 'plg_system_radicalform');
-
-						$this->setResponse(Text::_('PLG_RADICALFORM_MAIL_DISABLED'));
+						$messageLogLevel                   = Log::WARNING;
 					}
 				}
 			}
-			catch (\Exception $e)
+			catch (\Throwable $e)
 			{
 				$emailLogInput["rfWarningMessage"] = $e->getMessage();
-				Log::add(json_encode($emailLogInput), Log::WARNING, 'plg_system_radicalform');
-
-				$this->setResponse($e->getMessage());
+				$messageLogLevel                   = Log::WARNING;
 			}
 		}
 
-		Log::add(json_encode($emailLogInput), Log::NOTICE, 'plg_system_radicalform');
+		Log::add(json_encode($emailLogInput), $messageLogLevel, 'plg_system_radicalform');
 
 		$this->setResponse(['ok', $textOutput]);
 

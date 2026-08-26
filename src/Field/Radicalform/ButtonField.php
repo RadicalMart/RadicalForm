@@ -13,6 +13,7 @@ namespace Joomla\Plugin\System\RadicalForm\Field\Radicalform;
 use Joomla\CMS\Factory;
 use Joomla\CMS\Form\FormField;
 use Joomla\CMS\Language\Text;
+use Joomla\CMS\Session\Session;
 
 \defined('_JEXEC') or die;
 
@@ -43,8 +44,9 @@ class ButtonField extends FormField
 		$assets->usePreset('plg_system_radicalform.config');
 
 		$resultId = $this->element['resultid'] ?: 'radicalformresult';
+		$formToken = Session::getFormToken();
 
-		return "<button onclick=\"\" id='" . $this->element['id'] . "' class=\"btn btn-secondary control-group\"><span class=\"icon-refresh\"></span>" . Text::_($this->element['value']) . "</button><div id=\"" . $resultId . "\"></div>";
+		return "<button onclick=\"\" id='" . $this->element['id'] . "' data-token='" . $formToken . "' class=\"btn btn-secondary control-group\"><span class=\"icon-refresh\"></span>" . Text::_($this->element['value']) . "</button><div id=\"" . $resultId . "\"></div>";
 	}
 
 }
