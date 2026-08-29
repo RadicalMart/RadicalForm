@@ -3,7 +3,7 @@
   ~ @package   RadicalForm
   ~ @version   __DEPLOY_VERSION__
   ~ @author    Vladimir Eliseev aka Progreccor - https://progreccor.ru
-  ~ @copyright Copyright (c) 2025 Progreccor. All rights reserved.
+  ~ @copyright Copyright (c) 2026 Progreccor. All rights reserved.
   ~ @license   GNU/GPL license: http://www.gnu.org/copyleft/gpl.html
   ~ @link      https://progreccor.ru
   -->
@@ -15,8 +15,8 @@
     <authorUrl>https://radicalmart.ru</authorUrl>
     <copyright>Copyright (C) 2026 Progreccor. All rights reserved.</copyright>
     <license>GNU General Public License version 2 or later;</license>
-    <version>4.2.5</version>
-    <creationDate>2026-08-25</creationDate>
+    <version>4.2.6</version>
+    <creationDate>2026-08-29</creationDate>
     <description>PLG_RADICALFORM_DESC</description>
     <scriptfile>script.php</scriptfile>
     <namespace path="src">Joomla\Plugin\System\RadicalForm</namespace>

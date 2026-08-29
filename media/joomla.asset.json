@@ -8,7 +8,8 @@
         {
             "name": "plg_system_radicalform.config",
             "type": "style",
-            "uri": "plg_system_radicalform/adminscript.css"
+            "uri": "plg_system_radicalform/adminscript.css",
+            "version": "__DEPLOY_VERSION__"
         },
         {
             "name": "plg_system_radicalform.config",
@@ -21,7 +22,7 @@
                 "defer": true,
                 "type": "module"
             },
-            "version": "auto"
+            "version": "__DEPLOY_VERSION__"
         },
         {
             "name": "plg_system_radicalform.config",
