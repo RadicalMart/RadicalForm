@@ -47,7 +47,7 @@
 
 Если есть проблемы со скачиванием с github - резервная ссылка для скачивания:
 
-http://hika.su/update/free/plg_radicalform.zip
+https://hika.su/update/free/plg_radicalform.zip
 
 ---
 
@@ -86,4 +86,4 @@ You can download here https://github.com/RadicalMart/RadicalForm/releases
 
 If there are problems with downloading from github - a backup link for download:
 
-http://hika.su/update/free/plg_radicalform.zip
+https://hika.su/update/free/plg_radicalform.zip

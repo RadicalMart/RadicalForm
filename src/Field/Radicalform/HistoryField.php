@@ -19,7 +19,9 @@ use Joomla\CMS\Language\Text;
 use Joomla\CMS\Session\Session;
 use Joomla\CMS\Uri\Uri;
 use Joomla\Database\DatabaseInterface;
+use Joomla\Plugin\System\RadicalForm\Helper\FormMessage;
 use Joomla\Plugin\System\RadicalForm\Helper\RadicalFormHelper;
+use Joomla\Plugin\System\RadicalForm\Helper\UploadStorage;
 
 class HistoryField extends FormField
 {
@@ -57,7 +59,6 @@ class HistoryField extends FormField
 	{
 		$app   = Factory::getApplication();
 		$input = $app->getInput();
-		$get   = $input->get->getArray();
 
 		$l = Uri::getInstance();
 
@@ -79,24 +80,14 @@ class HistoryField extends FormField
 
 		$log_path = str_replace('\\', '/', $app->get('log_path'));
 
-		$page       = '';
-		$pageNumber = '0';
-		if (isset($get['page']))
-		{
-			if ($get['page'] == "0")
-			{
-				$page = '';
-			}
-			else
-			{
-				$page = $get['page'] . ".";
-			}
-			$pageNumber = (string) $get['page'];
-		}
-
-		$logType       = $this->getHistoryLogType($get);
-		$logFileName   = $this->getHistoryLogFileName($logType, $page);
-		$logLabel      = $this->getHistoryLogLabel($logType, $pageNumber);
+        $page       = RadicalFormHelper::getHistoryLogPage($input->get->get('page', '0', 'raw'));
+        $pageNumber = (string) $page;
+        $logType    = $input->get->get('log', 'messages', 'raw') === 'spam' ? 'spam' : 'messages';
+        $logLabel   = $this->getHistoryLogLabel($logType, (string) ($page ?? 0));
+        $downloadPath = trim((string) ($params->downloadpath ?? ''), '/');
+        $downloadPrefix = $logType === 'messages' && $downloadPath !== '' ? rtrim(Uri::root(), '/') . '/' . $downloadPath . '/' : '';
+        $fileDelimiter = (string) ($params->delimiter ?? '<br />');
+        $downloadSecret = (string) $app->get('secret', '');
 
 		$logFiles = '<ul class="nav nav-tabs historytable">';
 		foreach ($this->getHistoryLogTabs($log_path) as $logTab)
@@ -107,17 +98,22 @@ class HistoryField extends FormField
 			}
 			else
 			{
-				$logFiles .= "<li class='nav-item'><a href='{$currentURL}&page={$logTab['page']}&log={$logTab['log']}#attrib-list' class='nav-link' >" . htmlspecialchars($logTab['label'], ENT_QUOTES, 'UTF-8') . "</a></li> ";
+                $tabUrl = FormMessage::escape("{$currentURL}&page={$logTab['page']}&log={$logTab['log']}#attrib-list");
+                $logFiles .= "<li class='nav-item'><a href='{$tabUrl}' class='nav-link' >" . FormMessage::escape($logTab['label']) . "</a></li> ";
 			}
 		}
 		$logFiles .= '</ul>';
 
-		$logFilePath        = $log_path . '/' . $logFileName;
-		$escapedLogFilePath = htmlspecialchars($logFilePath, ENT_QUOTES, 'UTF-8');
-		$historyReadWarning = '';
-		$data               = [];
-		if (file_exists($logFilePath))
+        $logFilePath        = $page === null ? null : RadicalFormHelper::getHistoryLogPath($log_path, $logType, $page);
+        $escapedLogFilePath = htmlspecialchars($logFilePath ?? '', ENT_QUOTES, 'UTF-8');
+        $historyReadWarning = $page === null
+            ? $this->getHistoryFileWarning(Text::_('PLG_RADICALFORM_HISTORY_INVALID_ARCHIVE'))
+            : '';
+        $logFileSize        = 0;
+        $data               = [];
+        if ($logFilePath !== null)
 		{
+            $logFileSize = filesize($logFilePath);
 			if (is_readable($logFilePath))
 			{
 				$data = RadicalFormHelper::getCSV($logFilePath, "\t");
@@ -145,7 +141,7 @@ class HistoryField extends FormField
 				}
 			}
 		}
-		if ($historyReadWarning === '' && file_exists($logFilePath) && filesize($logFilePath) > 0 && count($data) === 0)
+        if ($historyReadWarning === '' && $logFileSize > 0 && count($data) === 0)
 		{
 			$historyReadWarning = $this->getHistoryFileWarning(
 				$rawDataCount > 0
@@ -155,7 +151,7 @@ class HistoryField extends FormField
 		}
 		$data                 = array_reverse($data);
 		$cnt                  = count($data);
-		$warningAboutRotation = $this->getLogRotationWarning();
+        $warningAboutRotation = $this->getLogRotationWarning();
 		$pluginsInfo          = $this->getEnabledRadicalFormPluginsInfo();
 		$showHiddenInfo       = isset($params->hiddeninfo) && $params->hiddeninfo;
 
@@ -163,7 +159,7 @@ class HistoryField extends FormField
 		{
 			$formToken = Session::getFormToken();
 			$logSizeLabel = $logType === 'spam' ? Text::_('PLG_RADICALFORM_SPAM_HISTORY_SIZE') : Text::_('PLG_RADICALFORM_HISTORY_SIZE');
-			$html = "<p class='firstEntry'>" . $logSizeLabel . "<strong>" . filesize($log_path . '/' . $logFileName) . "</strong> " . Text::_('PLG_RADICALFORM_HISTORY_BYTE') . $warningAboutRotation . $pluginsInfo . "</p>";
+            $html = "<p class='firstEntry'>" . $logSizeLabel . "<strong>" . $logFileSize . "</strong> " . Text::_('PLG_RADICALFORM_HISTORY_BYTE') . $warningAboutRotation . $pluginsInfo . "</p>";
 			$html .= "<p class='historytable'><button class='btn btn-danger' id='historyclear' data-token='{$formToken}'>" . Text::sprintf('PLG_RADICALFORM_HISTORY_CLEAR', $logLabel) .
 				"</button>";
 			if ($logType !== 'spam')
@@ -223,9 +219,10 @@ class HistoryField extends FormField
 								continue;
 							}
 
-							$value = in_array($key, ['url', 'reffer'], true)
-								? $this->getHistoryLink($json[$key], null, 'rf-history-file-link')
-								: htmlspecialchars((string) $json[$key], ENT_QUOTES, 'UTF-8');
+                            $value = FormMessage::text($json[$key]);
+                            $value = in_array($key, ['url', 'reffer'], true)
+                                ? FormMessage::webLink($value, null, 'rf-history-file-link')
+                                : FormMessage::escape($value);
 
 							$extrainfo .= $label . '<b>' . $value . "</b><br>";
 							unset($json[$key]);
@@ -251,7 +248,7 @@ class HistoryField extends FormField
 					{
 						if (isset($json["rfTarget"]) && (!empty($json["rfTarget"])))
 						{
-							$target = "<td>" . Text::_($json["rfTarget"]) . "</td>";
+                            $target = "<td>" . FormMessage::escape(Text::_(FormMessage::text($json["rfTarget"]))) . "</td>";
 							unset($json["rfTarget"]);
 						}
 						else
@@ -276,7 +273,7 @@ class HistoryField extends FormField
 					{
 						if (isset($json["rfFormID"]) && (!empty($json["rfFormID"])))
 						{
-							$formid = "<td>" . Text::_($json["rfFormID"]) . "</td>";
+                            $formid = "<td>" . FormMessage::escape(Text::_(FormMessage::text($json["rfFormID"]))) . "</td>";
 							unset($json["rfFormID"]);
 						}
 						else
@@ -293,7 +290,7 @@ class HistoryField extends FormField
 					$historyRecordGlue = isset($params->glue) ? (string) $params->glue : ', ';
 					foreach ($json as $key => $record)
 					{
-						$record = $this->formatHistoryRecord($this->normalizeHistoryRecord($record, $historyRecordGlue));
+                        $record = self::formatHistoryRecord($record, $historyRecordGlue, $fileDelimiter, $downloadPrefix, $downloadSecret);
 						$itog .= $this->getTranslatedFieldName((string) $key) . ": <b>" . $record . "</b><br />";
 					}
 
@@ -301,24 +298,28 @@ class HistoryField extends FormField
 					$timezone = new \DateTimeZone($site_offset);
 					$jdate->setTimezone($timezone);
 
+                    $ip = FormMessage::text($item[1]);
+                    $ipLabel = filter_var($ip, FILTER_VALIDATE_IP)
+                        ? FormMessage::webLink('http://whois.domaintools.com/' . $ip, $ip)
+                        : FormMessage::escape($ip);
 					$html .= '<tr class="row' . ($i % 2) . '">' .
-						'<td>' . $latestNumber . '</td>' .
+                        '<td>' . FormMessage::escape(FormMessage::text($latestNumber)) . '</td>' .
 						'<td class="nowrap">' . $jdate->format('H:i:s', true) . '<br><span class="muted">' . $jdate->format('d.m.Y', true) . '</span></td>' .
 						$target .
 						$formid .
-						'<td><a href="http://whois.domaintools.com/' . $item[1] . '" target="_blank">' . $item[1] . '</a></td>';
+                        '<td>' . $ipLabel . '</td>';
 					if (isset($item[3]) && in_array($item[3], ["WARNING", "ERROR"], true))
 					{
-						$warningTitle   = isset($json["rfAntiSpam"]) ? Text::_('PLG_RADICALFORM_ANTISPAM') . ': ' . $json["rfAntiSpam"] : $item[3];
-						$warningTitle   = isset($json["rfWarningMessage"]) ? $warningTitle . ': ' . $json["rfWarningMessage"] : $warningTitle;
-						$warningContent = $json_result ? $itog : htmlspecialchars($item[2]);
-						$html           .= '<td style="max-width: 500px; overflow: hidden; color: #9f2620;"><details><summary style="cursor: pointer; color: #9f2620;">' . htmlspecialchars($warningTitle) . '</summary><div class="rfMarginTop">' . $warningContent . '</div></details></td>' .
+                        $warningTitle   = isset($json["rfAntiSpam"]) ? Text::_('PLG_RADICALFORM_ANTISPAM') . ': ' . FormMessage::text($json["rfAntiSpam"]) : $item[3];
+                        $warningTitle   = isset($json["rfWarningMessage"]) ? $warningTitle . ': ' . FormMessage::text($json["rfWarningMessage"]) : $warningTitle;
+                        $warningContent = $json_result ? $itog : FormMessage::escape($item[2]);
+                        $html           .= '<td style="max-width: 500px; overflow: hidden; color: #9f2620;"><details><summary style="cursor: pointer; color: #9f2620;">' . FormMessage::escape($warningTitle) . '</summary><div class="rfMarginTop">' . $warningContent . '</div></details></td>' .
 							($showHiddenInfo ? '<td style="max-width: 500px; overflow: hidden;">' . $extrainfo . '</td>' : '') .
 							'</tr>';
 					}
 					else
 					{
-						$html .= '<td style="max-width: 500px; overflow: hidden;">' . ($json_result ? '' . $itog . '' : htmlspecialchars($item[2])) . '</td>' .
+                        $html .= '<td style="max-width: 500px; overflow: hidden;">' . ($json_result ? $itog : FormMessage::escape($item[2])) . '</td>' .
 							($showHiddenInfo ? '<td style="max-width: 500px; overflow: hidden;">' . $extrainfo . '</td>' : '') .
 							'</tr>';
 					}
@@ -335,76 +336,72 @@ class HistoryField extends FormField
 			$html = "{$logFiles}<p class='firstEntry'>{$warningAboutRotation}{$pluginsInfo}</p>" . $emptyHistoryMessage;
 		}
 
-		return $html;
+        return $html;
 	}
 
-	/**
-	 * Formats URLs in a history field value for compact display.
-	 *
-	 * @param   string  $record  Field value
-	 *
-	 * @return  string  Formatted field value
-	 *
-	 * @since   __DEPLOY_VERSION__
-	 */
-	private function formatHistoryRecord(string $record): string
-	{
-		return preg_replace_callback(
-			'/https?:\/\/[^\s<>"\']+/i',
-			function (array $matches): string {
-				$url   = rtrim($matches[0], '.,:;');
-				$trail = substr($matches[0], strlen($url));
-				$path  = parse_url($url, PHP_URL_PATH);
-				$name  = $path ? basename($path) : '';
-				$label = $name && strpos($name, '.') !== false ? $name : $url;
+    private static function formatHistoryRecord(mixed $record, string $glue, string $fileDelimiter, string $downloadPrefix, string $secret): string
+    {
+        if (is_string($record) && preg_match('~\Ahttps?://(.+)\z~i', $downloadPrefix, $prefixParts) === 1)
+        {
+            // Logs keep attachment values flattened for CSV and compatibility with existing records.
+            $boundary = preg_quote($fileDelimiter, '~') . '(?i:https?)://' . preg_quote($prefixParts[1], '~');
+            $parts = preg_split('~(' . $boundary . ')~', $record, -1, PREG_SPLIT_DELIM_CAPTURE) ?: [$record];
+            $links = [];
 
-				return $this->getHistoryLink($url, $label, 'rf-history-file-link') . $trail;
-			},
-			$record
-		);
-	}
+            // Only the appended, recognized links use the configured attachment separator.
+            while (count($parts) > 1)
+            {
+                $suffix = end($parts);
+                if (!self::isHistoryAttachment($suffix, $secret))
+                {
+                    break;
+                }
 
-	/**
-	 * Converts history field values to a display string.
-	 *
-	 * @param   mixed   $record  Field value
-	 * @param   string  $glue    Multiple values separator
-	 *
-	 * @return  string  Field value for display
-	 *
-	 * @since   __DEPLOY_VERSION__
-	 */
-	private function normalizeHistoryRecord($record, string $glue): string
-	{
-		if (is_array($record))
-		{
-			$values = [];
-			foreach ($record as $value)
-			{
-				$values[] = $this->normalizeHistoryRecord($value, $glue);
-			}
-			if ($glue === '<br />' || $glue === '<br>')
-			{
-				array_unshift($values, ' ');
-			}
+                array_pop($parts);
+                $links[] = substr(array_pop($parts), strlen($fileDelimiter)) . $suffix;
+            }
 
-			return implode($glue, $values);
-		}
+            if ($links !== [])
+            {
+                $links[] = implode('', $parts);
 
-		if ($record === null)
-		{
-			return '';
-		}
+                return FormMessage::format(array_reverse($links), $fileDelimiter, FormMessage::LINKED_HTML, false);
+            }
+        }
 
-		if (is_scalar($record))
-		{
-			return (string) $record;
-		}
+        return FormMessage::format($record, $glue, FormMessage::LINKED_HTML);
+    }
 
-		$json = json_encode($record, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    private static function isHistoryAttachment(string $suffix, string $secret): bool
+    {
+        [$path, $query] = array_pad(explode('?', $suffix, 2), 2, null);
+        $segments = explode('/', $path);
+        if (count($segments) !== 3)
+        {
+            return false;
+        }
 
-		return $json === false ? '' : $json;
-	}
+        [$group, $folder, $name] = $segments;
+        if (!preg_match('/\A' . UploadStorage::GROUP_PATTERN . '\z/', $group)
+            || !UploadStorage::isSegment($folder) || !UploadStorage::isSegment($name))
+        {
+            return false;
+        }
+
+        if (!str_starts_with($group, 'v2-'))
+        {
+            return $query === null;
+        }
+
+        if ($secret === '' || $query === null || !preg_match('/\Asig=([a-f0-9]{64})\z/', $query, $matches))
+        {
+            return false;
+        }
+
+        $expected = hash_hmac('sha256', "radicalform.download/$group/$folder/$name", $secret);
+
+        return hash_equals($expected, $matches[1]);
+    }
 
 	/**
 	 * Returns warning markup for log file read issues.
@@ -422,18 +419,6 @@ class HistoryField extends FormField
 			. '</div></div>';
 	}
 
-	private function getHistoryLogType(array $get): string
-	{
-		return isset($get['log']) && $get['log'] === 'spam' ? 'spam' : 'messages';
-	}
-
-	private function getHistoryLogFileName(string $logType, string $page): string
-	{
-		$file = $logType === 'spam' ? 'plg_system_radicalform_spam.php' : 'plg_system_radicalform.php';
-
-		return $page . $file;
-	}
-
 	private function getHistoryLogLabel(string $logType, string $page): string
 	{
 		$label = $logType === 'spam' ? Text::_('PLG_RADICALFORM_LOG_SPAM') : Text::_('PLG_RADICALFORM_LOG_MESSAGES');
@@ -441,75 +426,31 @@ class HistoryField extends FormField
 		return $page === '0' ? $label : $label . ' #' . $page;
 	}
 
-	private function getHistoryLogTabs(string $logPath): array
-	{
-		$tabs = [
-			[
-				'log'   => 'messages',
-				'page'  => '0',
-				'label' => $this->getHistoryLogLabel('messages', '0')
-			]
-		];
+    private function getHistoryLogTabs(string $logPath): array
+    {
+        $tabs = [];
 
-		foreach (['messages', 'spam'] as $logType)
-		{
-			$baseFile = $this->getHistoryLogFileName($logType, '');
-			if ($logType === 'spam' && file_exists($logPath . '/' . $baseFile))
-			{
-				$tabs[] = [
-					'log'   => 'spam',
-					'page'  => '0',
-					'label' => $this->getHistoryLogLabel('spam', '0')
-				];
-			}
+        foreach (['messages', 'spam'] as $logType)
+        {
+            $pages = array_keys(RadicalFormHelper::getHistoryLogArchives($logPath, $logType));
+            if ($logType === 'messages' || RadicalFormHelper::getHistoryLogPath($logPath, $logType) !== null)
+            {
+                array_unshift($pages, 0);
+            }
 
-			foreach (glob($logPath . '/*.' . $baseFile) as $filename)
-			{
-				$page = strstr(pathinfo($filename, PATHINFO_BASENAME), '.', true);
+            foreach ($pages as $page)
+            {
+                $index = (string) $page;
+                $tabs[] = [
+                    'log' => $logType,
+                    'page' => $index,
+                    'label' => $this->getHistoryLogLabel($logType, $index),
+                ];
+            }
+        }
 
-				if ($page === false || $page === '')
-				{
-					continue;
-				}
-
-				$tabs[] = [
-					'log'   => $logType,
-					'page'  => $page,
-					'label' => $this->getHistoryLogLabel($logType, $page)
-				];
-			}
-		}
-
-		usort($tabs, function (array $a, array $b): int {
-			if ($a['log'] !== $b['log'])
-			{
-				return $a['log'] === 'messages' ? -1 : 1;
-			}
-
-			return (int) $a['page'] <=> (int) $b['page'];
-		});
-
-		return $tabs;
-	}
-
-	/**
-	 * Returns a safe link for the history table.
-	 *
-	 * @param   string       $url    Link URL
-	 * @param   string|null  $label  Optional link label
-	 * @param   string       $class  Optional link class
-	 *
-	 * @return  string  Link markup
-	 *
-	 * @since   __DEPLOY_VERSION__
-	 */
-	private function getHistoryLink(string $url, ?string $label = null, string $class = ''): string
-	{
-		$label = $label ?? $url;
-		$class = $class ? ' class="' . htmlspecialchars($class, ENT_QUOTES, 'UTF-8') . '"' : '';
-
-		return '<a href="' . htmlspecialchars($url, ENT_QUOTES, 'UTF-8') . '" target="_blank"' . $class . '>' . htmlspecialchars($label, ENT_QUOTES, 'UTF-8') . '</a>';
-	}
+        return $tabs;
+    }
 
 	/**
 	 * Returns a warning about the next Joomla scheduled log rotation.

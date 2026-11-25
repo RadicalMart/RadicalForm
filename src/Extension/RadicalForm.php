@@ -31,10 +31,11 @@ use Joomla\Component\Plugins\Administrator\Model\PluginModel;
 use Joomla\Database\DatabaseAwareTrait;
 use Joomla\Event\SubscriberInterface;
 use Joomla\Filesystem\File;
-use Joomla\Filesystem\Folder;
 use Joomla\Plugin\System\RadicalForm\Event\BeforeProcessRadicalFormEvent;
+use Joomla\Plugin\System\RadicalForm\Helper\FormMessage;
 use Joomla\Plugin\System\RadicalForm\Helper\MaxHelper;
 use Joomla\Plugin\System\RadicalForm\Helper\RadicalFormHelper;
+use Joomla\Plugin\System\RadicalForm\Helper\UploadStorage;
 use Joomla\String\StringHelper;
 use Joomla\CMS\HTML\HTMLHelper;
 
@@ -55,11 +56,6 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 	 * @var string
 	 */
 	private $logPath;
-
-	/**
-	 * @var string
-	 */
-	private $spamLogPath;
 
 	/**
 	 * @var string
@@ -89,6 +85,26 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 	private const SPAM_LOG_VALUE_MAX_LENGTH = 4096;
 
 	private const SPAM_LOG_ENTRY_MAX_BYTES = 65536;
+
+    private const IMAGE_UPLOAD_MIME_TYPES = [
+        'apng' => ['image/apng', 'image/png'],
+        'avif' => ['image/avif'],
+        'bmp' => ['image/bmp', 'image/x-bmp', 'image/x-ms-bmp'],
+        'gif' => ['image/gif'],
+        'heic' => ['image/heic', 'image/heic-sequence', 'image/heif', 'image/heif-sequence'],
+        'heif' => ['image/heic', 'image/heic-sequence', 'image/heif', 'image/heif-sequence'],
+        'ico' => ['image/vnd.microsoft.icon', 'image/x-icon', 'image/x-ico'],
+        'jfif' => ['image/jpeg', 'image/pjpeg'],
+        'jp2' => ['image/jp2'],
+        'jpe' => ['image/jpeg', 'image/pjpeg'],
+        'jpeg' => ['image/jpeg', 'image/pjpeg'],
+        'jpg' => ['image/jpeg', 'image/pjpeg'],
+        'jxl' => ['image/jxl'],
+        'png' => ['image/png', 'image/apng'],
+        'tif' => ['image/tiff', 'image/x-tiff'],
+        'tiff' => ['image/tiff', 'image/x-tiff'],
+        'webp' => ['image/webp'],
+    ];
 
     /**
      * Field names used by Joomla to route com_ajax requests.
@@ -172,7 +188,6 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 		$this->maxDirSize     = $this->params->get('maxfile', 20) * 1048576;
 		$this->maxStorageSize = $this->params->get('maxstorage', 1000) * 1048576;
 		$this->logPath        = str_replace('\\', '/', $this->getApplication()->get('log_path')) . '/plg_system_radicalform.php';
-		$this->spamLogPath    = str_replace('\\', '/', $this->getApplication()->get('log_path')) . '/plg_system_radicalform_spam.php';
 		$this->maxStorageTime = $this->params->get('maxtime', 30);
 
 		Log::addLogger(
@@ -1037,32 +1052,42 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 
 	private function logAntiSpamBlock(array $input, $reason)
 	{
-		$entry               = $input;
-		$entry['rfAntiSpam'] = $reason;
-
-		foreach (array_keys($entry) as $key)
-		{
-			if (is_string($key) && str_starts_with(strtolower($key), 'rfantiflood'))
-			{
-				unset($entry[$key]);
-			}
-		}
-
-		$entry = $this->prepareSpamLogEntry($entry);
-
-		$this->clearSpamLogFileByMaxSize();
-
-		Log::add($this->encodeSpamLogEntry($entry), Log::WARNING, 'plg_system_radicalform_spam');
+        $input['rfAntiSpam'] = $reason;
+        $this->logSpamBlock($input);
 	}
 
-	private function logSpamBlock(array $entry)
-	{
-		$entry = $this->prepareSpamLogEntry($entry);
+    private function logSpamBlock(array $entry, bool $trustedAntiFlood = false): bool
+    {
+        if (!$trustedAntiFlood)
+        {
+            foreach (array_keys($entry) as $key)
+            {
+                if (is_string($key) && str_starts_with(strtolower($key), 'rfantiflood'))
+                {
+                    unset($entry[$key]);
+                }
+            }
+        }
 
-		$this->clearSpamLogFileByMaxSize();
+        $entry = $this->prepareSpamLogEntry($entry);
+        $logPath = (string) $this->getApplication()->get('log_path');
 
-		Log::add($this->encodeSpamLogEntry($entry), Log::WARNING, 'plg_system_radicalform_spam');
-	}
+        return RadicalFormHelper::writeSpamLog($logPath, (int) $this->params->get('maxlogfile', 500000), function (bool $rotated) use ($entry): bool {
+            try
+            {
+                if ($rotated)
+                {
+                    Log::add(json_encode(['message' => Text::_('PLG_RADICALFORM_ROTATE_HISTORY_BY_MAX_LOG')]), Log::NOTICE, 'plg_system_radicalform_spam');
+                }
+                Log::add($this->encodeSpamLogEntry($entry), Log::WARNING, 'plg_system_radicalform_spam');
+                return true;
+            }
+            catch (\RuntimeException)
+            {
+                return false;
+            }
+        });
+    }
 
 	private function prepareSpamLogEntry(array $entry): array
 	{
@@ -1321,97 +1346,6 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 		return $counts;
 	}
 
-	private function getActiveAntiFloodBlock(int $now, int $dayStartedAt, bool $burstEnabled, bool $dailyEnabled, int $blockMinutes): ?array
-	{
-		$cutoffs = [];
-
-		if ($burstEnabled)
-		{
-			$cutoffs[] = $now - ($blockMinutes * 60);
-		}
-
-		if ($dailyEnabled)
-		{
-			$cutoffs[] = $dayStartedAt;
-		}
-
-		$oldestCutoff = min($cutoffs);
-
-		$activeBlock = null;
-
-		foreach ($this->getLogFilesByRecency('plg_system_radicalform_spam.php') as $file)
-		{
-			$newestTimestamp = null;
-
-			foreach (RadicalFormHelper::getCSV($file, "\t") as $record)
-			{
-				if (count($record) < 3 || str_starts_with((string) $record[0], '#'))
-				{
-					continue;
-				}
-
-				$timestamp = $this->getLogTimestamp($record[0]);
-
-				if ($timestamp === null)
-				{
-					continue;
-				}
-
-				$newestTimestamp = $newestTimestamp === null ? $timestamp : max($newestTimestamp, $timestamp);
-
-				if ($timestamp < $oldestCutoff)
-				{
-					continue;
-				}
-
-				$entry = json_decode($record[2], true);
-
-				if (!is_array($entry) || empty($entry['rfAntiFlood']) || empty($entry['rfAntiFloodBlockedUntil']))
-				{
-					continue;
-				}
-
-				$type = (string) $entry['rfAntiFlood'];
-
-				if (!in_array($type, ['burst', 'daily'], true))
-				{
-					continue;
-				}
-
-				if (($type === 'burst' && !$burstEnabled) || ($type === 'daily' && !$dailyEnabled))
-				{
-					continue;
-				}
-
-				$blockedUntil = $this->getLogTimestamp($entry['rfAntiFloodBlockedUntil']);
-
-				if ($blockedUntil === null || $blockedUntil <= $now)
-				{
-					continue;
-				}
-
-				if ($activeBlock === null || $blockedUntil > $activeBlock['blocked_until'])
-				{
-					$activeBlock = [
-						'type'           => $type,
-						'count'          => (int) ($entry['rfAntiFloodCount'] ?? 0),
-						'limit'          => (int) ($entry['rfAntiFloodLimit'] ?? 0),
-						'period_minutes' => (int) ($entry['rfAntiFloodPeriodMinutes'] ?? 0),
-						'started_at'     => $timestamp,
-						'blocked_until'  => $blockedUntil
-					];
-				}
-			}
-
-			if ($newestTimestamp !== null && $newestTimestamp < $oldestCutoff)
-			{
-				break;
-			}
-		}
-
-		return $activeBlock;
-	}
-
 	private function getSiteTimezone(): \DateTimeZone
 	{
 		try
@@ -1479,29 +1413,25 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 			$this->logSpamBlock([
 				'rfAntiSpam'            => $typeLabel,
 				'rfAntiFloodAlertError' => $e->getMessage()
-			]);
+            ], true);
 		}
 	}
 
-	private function activateAntiFloodBlock(array $block): void
-	{
-		$typeLabel = $block['type'] === 'daily'
-			? Text::_('PLG_RADICALFORM_DAILY_BLOCKING')
-			: Text::_('PLG_RADICALFORM_BURST_BLOCKING');
-
-		$this->logSpamBlock([
-			'rfAntiSpam'                  => $typeLabel,
-			'rfAntiFlood'                 => $block['type'],
-			'rfAntiFloodCount'            => $block['count'],
-			'rfAntiFloodLimit'            => $block['limit'],
-			'rfAntiFloodPeriodMinutes'    => $block['period_minutes'],
-			'rfAntiFloodStartedAt'        => $this->formatAntiFloodDate($block['started_at']),
-			'rfAntiFloodBlockedUntil'     => $this->formatAntiFloodDate($block['blocked_until']),
-			'rfWarningMessage'            => Text::_('PLG_RADICALFORM_ANTIFLOOD_TRIGGERED')
-		]);
-
-		$this->sendAntiFloodAlert($block);
-	}
+    private function getAntiFloodLogEntry(array $block): array
+    {
+        return [
+            'rfAntiSpam'               => $block['type'] === 'daily'
+                ? Text::_('PLG_RADICALFORM_DAILY_BLOCKING')
+                : Text::_('PLG_RADICALFORM_BURST_BLOCKING'),
+            'rfAntiFlood'              => $block['type'],
+            'rfAntiFloodCount'         => $block['count'],
+            'rfAntiFloodLimit'         => $block['limit'],
+            'rfAntiFloodPeriodMinutes' => $block['period_minutes'],
+            'rfAntiFloodStartedAt'     => $this->formatAntiFloodDate($block['started_at']),
+            'rfAntiFloodBlockedUntil'  => $this->formatAntiFloodDate($block['blocked_until']),
+            'rfWarningMessage'         => Text::_('PLG_RADICALFORM_ANTIFLOOD_TRIGGERED')
+        ];
+    }
 
 	private function checkAntiFlood(): ?array
 	{
@@ -1520,12 +1450,22 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 		$nowDate          = new \DateTimeImmutable('now', $this->getSiteTimezone());
 		$now              = $nowDate->getTimestamp();
 		$dayStartedAt     = $nowDate->setTime(0, 0)->getTimestamp();
-		$activeBlock      = $this->getActiveAntiFloodBlock($now, $dayStartedAt, $burstEnabled, $dailyEnabled, $blockMinutes);
-
-		if ($activeBlock !== null)
-		{
-			return $activeBlock;
-		}
+        $logPath = (string) $this->getApplication()->get('log_path');
+        // Keep applying the configured thresholds if the saved state is unavailable.
+        $blocks = RadicalFormHelper::getAntiFloodBlocks($logPath) ?? [];
+        $activeBlock = null;
+        foreach (['burst' => $burstEnabled, 'daily' => $dailyEnabled] as $type => $enabled)
+        {
+            $candidate = $blocks[$type] ?? null;
+            if ($enabled && $candidate !== null && $candidate['blocked_until'] > ($activeBlock['blocked_until'] ?? $now))
+            {
+                $activeBlock = $candidate;
+            }
+        }
+        if ($activeBlock !== null)
+        {
+            return $activeBlock;
+        }
 
 		$burstStartedAt = $burstEnabled ? $now - ($observationMins * 60) : null;
 		$counts         = $this->countSentForms($burstStartedAt, $dailyEnabled ? $dayStartedAt : null);
@@ -1554,22 +1494,13 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 			];
 		}
 
-		if ($block !== null)
-		{
-			$this->activateAntiFloodBlock($block);
-		}
+        if ($block !== null && RadicalFormHelper::activateAntiFloodBlock($logPath, $block))
+        {
+            $this->logSpamBlock($this->getAntiFloodLogEntry($block), true);
+            $this->sendAntiFloodAlert($block);
+        }
 
 		return $block;
-	}
-
-	private function clearSpamLogFileByMaxSize()
-	{
-		if (file_exists($this->spamLogPath) && $this->params->get('maxlogfile') < filesize($this->spamLogPath))
-		{
-			$this->rotateLogFile('plg_system_radicalform_spam.php');
-			$entry = ['message' => Text::_('PLG_RADICALFORM_ROTATE_HISTORY_BY_MAX_LOG')];
-			Log::add(json_encode($entry), Log::NOTICE, 'plg_system_radicalform_spam');
-		}
 	}
 
 	private function rotateLogFile(string $baseFileName)
@@ -1622,14 +1553,6 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 	{
 		return $logType === 'spam' ? 'plg_system_radicalform_spam' : 'plg_system_radicalform';
 	}
-
-	private function getHistoryLogFileName(string $logType, string $page): string
-	{
-		$file = $logType === 'spam' ? 'plg_system_radicalform_spam.php' : 'plg_system_radicalform.php';
-
-		return $page . $file;
-	}
-
 
 	/**
 	 * Listener for the `onAfterRender` event.
@@ -1686,6 +1609,7 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 				'Subject'             => $this->params->get('rfSubject'),
 				'KeepAlive'           => $this->params->get('keepalive'),
 				'TokenExpire'         => $refreshTime * 1000,
+                'DeleteFile'          => Text::_('JACTION_DELETE'),
 				'DeleteColor'         => $this->params->get('buttondeletecolor', "#fafafa"),
 				'DeleteBackground'    => $this->params->get('buttondeletecolorbackground', "#f44336"),
 				'JsChallengeEnabled'  => (int) $this->params->get('js_challenge_enabled', 0),
@@ -1778,157 +1702,213 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 	 *
 	 * @since version
 	 */
-	public function getDirectorySize($path)
-	{
-		$fileSize = 0;
-		$dir      = scandir($path);
+    public function getDirectorySize($path)
+    {
+        $fileSize = 0;
 
-		foreach ($dir as $file)
-		{
-			if (($file != '.') && ($file != '..'))
-				if (is_dir($path . '/' . $file))
-					$fileSize += $this->getDirectorySize($path . '/' . $file);
-				else
-					$fileSize += filesize($path . '/' . $file);
-		}
+        foreach (@scandir($path) ?: [] as $file)
+        {
+            $child = $path . '/' . $file;
+            if ($file === '.' || $file === '..' || is_link($child))
+            {
+                continue;
+            }
 
-		return $fileSize;
-	}
+            $fileSize += is_dir($child) ? $this->getDirectorySize($child) : (@filesize($child) ?: 0);
+        }
 
+        return $fileSize;
+    }
 
-	/**
-	 * Here we process uploaded files
-	 *
-	 * @param   array  $files  Uploaded file
-	 * @param   int    $uniq   Uniq mark for this form
-	 *
-	 * @return array
-	 *
-	 * @since version 2.6
-	 */
-	private function processUploadedFiles($files, $uniq)
-	{
-		$uploaddir = $this->params->get('uploadstorage') . '/rf-' . $uniq;
+    private function getUploadStorage(): ?UploadStorage
+    {
+        return UploadStorage::open((string) $this->params->get('uploadstorage', ''));
+    }
 
-		if (!file_exists($this->params->get('uploadstorage')))
-		{
-			mkdir($this->params->get('uploadstorage'));
-		}
+    private function beginExternalUploadMutation(UploadStorage $storage, string $group): ?\Closure
+    {
+        try
+        {
+            return $storage->beginGroupMutation($group);
+        }
+        catch (\Throwable)
+        {
+            try
+            {
+                return $storage->beginUntrackedMutation();
+            }
+            catch (\Throwable $error)
+            {
+                $this->logUploadAccountingError($error);
+            }
 
-		// вначале проверим есть ли папки, подлежащие удалению по старости
-		$folders = Folder::folders($this->params->get('uploadstorage'), "rf-*", false, true);
-		$maxtime = $this->params->get('maxtime', 30) * 86400;
+            return null;
+        }
+    }
 
-		foreach ($folders as $folder)
-		{
-			// we use name of the directory as a time of creation of the directory
-			$t2    = explode("-", basename($folder));
-			$dtime = intval(time() - intval($t2[1] / 1000));
-			if ($dtime > ($maxtime)) // все что старше указанного срока - под нож!
-			{
-				Folder::delete($folder);
-			}
-		}
+    private function finishExternalUploadMutation(?\Closure $finish): void
+    {
+        try
+        {
+            $finish?->__invoke();
+        }
+        catch (\Throwable $error)
+        {
+            $this->logUploadAccountingError($error);
+        }
+    }
 
-		$output = [];
-		if (!empty($files))
-		{
-			if (!file_exists($uploaddir))
-			{
-				mkdir($uploaddir); // создаем папку, если ее нет для файлов
-			}
+    private function logUploadAccountingError(\Throwable $error): void
+    {
+        try
+        {
+            Log::add(json_encode([
+                'rfWarningMessage' => 'RadicalForm upload accounting requires reconciliation',
+                'error' => $error->getMessage(),
+            ], JSON_INVALID_UTF8_SUBSTITUTE), Log::WARNING, 'plg_system_radicalform');
+        }
+        catch (\Throwable)
+        {
+            // Accounting diagnostics must not interrupt a submission.
+        }
+    }
 
-			// надо посчитать вначале размер всех файлов в папке
-			$totalsize = $this->getDirectorySize($this->params->get('uploadstorage'));
-			$lang      = $this->getApplication()->getLanguage();
+    private function getUploadGroup(mixed $uniq): ?string
+    {
+        if ((!is_string($uniq) && !is_int($uniq)) || !preg_match('/\A[1-9][0-9]{0,18}\z/', (string) $uniq))
+        {
+            return null;
+        }
 
-			foreach ($files as $key => $file)
-			{
-				$key = $this->makeSafe(basename((string) $key));
-				if ($key === '')
-				{
-					continue;
-				}
+        // The browser ID is a correlation key. The directory belongs to the Joomla session.
+        $sessionToken = $this->getApplication()->getSession()->getToken();
 
-				if ($file['error'] == 4) // ERROR NO FILE
-					continue;
+        return 'v2-' . hash_hmac('sha256', 'radicalform.upload.' . $uniq, $sessionToken);
+    }
 
-				if ($file['error'])
-				{
-					switch ($file['error'])
-					{
-						case 1:
-							$output["error"] = Text::_('PLG_RADICALFORM_FILE_TO_LARGE_THAN_PHP_INI_ALLOWS');
-							break;
+    private function processUploadedFiles(array $files, string $group): array
+    {
+        if ($files === [])
+        {
+            return [];
+        }
 
-						case 2:
-							$output["error"] = Text::_('PLG_RADICALFORM_FILE_TO_LARGE_THAN_HTML_FORM_ALLOWS');
-							break;
+        $storage = $this->getUploadStorage();
+        if ($storage === null)
+        {
+            return ['error' => Text::_('PLG_RADICALFORM_ERROR_UPLOAD')];
+        }
 
-						case 3:
-							$output["error"] = Text::_('PLG_RADICALFORM_ERROR_PARTIAL_UPLOAD');
-					}
-				}
-				else
-				{
-					if (!$file['name'] || !InputFilter::isSafeFile($file))
-					{
-						$output["error"] = Text::_('PLG_RADICALFORM_ERROR_WRONG_TYPE');
-						continue;
-					}
+        $days = max(0, (int) $this->maxStorageTime);
+        $retention = $days > intdiv(PHP_INT_MAX, 86400) ? PHP_INT_MAX : $days * 86400;
+        $app = $this->getApplication();
+        $address = $app->getInput()->server->get('REMOTE_ADDR', '', 'raw');
+        $packedAddress = is_string($address) ? @inet_pton($address) : false;
+        if ($packedAddress !== false && str_starts_with($packedAddress, str_repeat("\0", 10) . "\xff\xff"))
+        {
+            $packedAddress = substr($packedAddress, 12);
+        }
+        $client = hash_hmac('sha256', $packedAddress === false ? '' : substr($packedAddress, 0, 8), (string) $app->get('secret', ''));
 
-					$mime     = $this->mimetype($file['tmp_name']);
-					$mimetype = explode('/', $mime);
+        try
+        {
+            if (!$storage->admitUpload($client, count($files)))
+            {
+                return ['error' => Text::_('PLG_RADICALFORM_UPLOAD_RATE_LIMIT')];
+            }
 
-					if ($mimetype[0] == "text" || strpos($mime, "svg") !== false)
-					{
-						$output["error"] = Text::_('PLG_RADICALFORM_ERROR_WRONG_TYPE');
-						continue;
-					}
+            $output = [];
+            $preparedFiles = $this->prepareUploadedFiles($files, $output);
+            if ($preparedFiles === [])
+            {
+                return $output;
+            }
 
-					if (($file['size'] + $totalsize) < $this->maxStorageSize)
-					{
-						if (!$file['name'])
-						{
-							$output['error'] = Text::_('PLG_RADICALFORM_ERROR_WRONG_TYPE');
-						}
-						else
-						{
-							if (!file_exists($uploaddir . "/" . $key))
-							{
-								mkdir($uploaddir . "/" . $key); // создаем папку, если ее нет для файлов
-							}
-							$uploadedFileName = $this->makeSafe($lang->transliterate($file['name']));
-							if ($uploadedFileName === '')
-							{
-								$output["error"] = Text::_('PLG_RADICALFORM_ERROR_UPLOAD');
-								continue;
-							}
+            return $storage->uploadBatch($group, $retention, fn () => $this->storeUploadedFiles($storage, $group, $preparedFiles, $output));
+        }
+        catch (\RuntimeException)
+        {
+            return ['error' => Text::_('PLG_RADICALFORM_ERROR_UPLOAD')];
+        }
+    }
 
-							if (File::upload($file['tmp_name'], $uploaddir . "/" . $key . "/" . $uploadedFileName))
-							{
-								$output["name"] = $uploadedFileName;
-								$output["key"]  = $key;
-							}
-							else
-							{
-								$output["error"] = Text::_('PLG_RADICALFORM_ERROR_UPLOAD');
-							}
-						}
-					}
-					else
-					{
-						$output["error"] = Text::_('PLG_RADICALFORM_TOO_MANY_UPLOADS');
-					}
+    private function prepareUploadedFiles(array $files, array &$output): array
+    {
+        $preparedFiles = [];
+        $language = $this->getApplication()->getLanguage();
 
-				}
+        foreach ($files as $key => $file)
+        {
+            $key = $this->makeSafe(basename((string) $key));
+            if (!UploadStorage::isSegment($key) || !isset($file['error']) || $file['error'] == UPLOAD_ERR_NO_FILE)
+            {
+                continue;
+            }
 
-			}
+            if ($file['error'])
+            {
+                $message = match ((int) $file['error']) {
+                    UPLOAD_ERR_INI_SIZE => 'PLG_RADICALFORM_FILE_TO_LARGE_THAN_PHP_INI_ALLOWS',
+                    UPLOAD_ERR_FORM_SIZE => 'PLG_RADICALFORM_FILE_TO_LARGE_THAN_HTML_FORM_ALLOWS',
+                    UPLOAD_ERR_PARTIAL => 'PLG_RADICALFORM_ERROR_PARTIAL_UPLOAD',
+                    default => null,
+                };
+                if ($message !== null)
+                {
+                    $output['error'] = Text::_($message);
+                }
+                continue;
+            }
 
-		}
+            if (!is_string($file['name'] ?? null) || $file['name'] === '' || !is_string($file['tmp_name'] ?? null)
+                || !is_uploaded_file($file['tmp_name']) || !InputFilter::isSafeFile($file))
+            {
+                $output['error'] = Text::_('PLG_RADICALFORM_ERROR_WRONG_TYPE');
+                continue;
+            }
 
-		return $output;
-	}
+            $name = $this->makeSafe($language->transliterate($file['name']));
+            $size = @filesize($file['tmp_name']);
+            if (!UploadStorage::isSegment($name) || $size === false)
+            {
+                $output['error'] = Text::_('PLG_RADICALFORM_ERROR_UPLOAD');
+                continue;
+            }
+
+            $extension = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+            $expectedMimeTypes = self::IMAGE_UPLOAD_MIME_TYPES[$extension] ?? null;
+            $mime = $size > 0 ? $this->mimetype($file['tmp_name']) : false;
+            if (!$mime || str_starts_with($mime, 'text/') || str_contains($mime, 'svg')
+                || $extension === 'svg' || $extension === 'svgz'
+                || ($expectedMimeTypes !== null && !in_array($mime, $expectedMimeTypes, true)))
+            {
+                $output['error'] = Text::_('PLG_RADICALFORM_ERROR_WRONG_TYPE');
+                continue;
+            }
+
+            $preparedFiles[] = ['field' => $key, 'name' => $name, 'source' => $file['tmp_name'], 'size' => $size];
+        }
+
+        return $preparedFiles;
+    }
+
+    private function storeUploadedFiles(UploadStorage $storage, string $group, array $files, array $output): array
+    {
+        foreach ($files as $file)
+        {
+            $saved = $storage->store($group, $file['field'], $file['name'], $file['source'], $file['size'], $this->maxStorageSize);
+            if ($saved !== true)
+            {
+                $output['error'] = Text::_($saved === null ? 'PLG_RADICALFORM_TOO_MANY_UPLOADS' : 'PLG_RADICALFORM_ERROR_UPLOAD');
+                continue;
+            }
+
+            $output['name'] = $file['name'];
+            $output['key'] = $file['field'];
+        }
+
+        return $output;
+    }
 
 	/**
 	 * OnAfterInitialise event
@@ -1963,20 +1943,42 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 			}
 		}
 
-		$uri   = Uri::getInstance();
-		$path  = $uri->getPath();
-		$root  = Uri::root(true);
-		$entry = $root . "/" . $this->params->get('downloadpath');
+        $downloadPath = $this->getDownloadPath();
+        if ($downloadPath === '')
+        {
+            return;
+        }
 
-		if (preg_match('#' . $entry . '#', $path))
-		{
-			$folder   = basename(dirname($path));
-			$uniq     = basename(dirname(dirname($path)));
-			$filename = basename($path);
+        $uri = Uri::getInstance();
+        $path = $uri->getPath();
+        $prefix = rtrim(Uri::root(true), '/') . '/' . $downloadPath . '/';
+        if (!str_starts_with($path, $prefix))
+        {
+            return;
+        }
 
-			$this->showImage($uniq, $folder, $filename);
-		}
+        $segments = explode('/', substr($path, strlen($prefix)));
+        if (count($segments) === 3)
+        {
+            [$group, $folder, $name] = $segments;
+            $this->serveUploadedFile($group, $folder, $name, $uri->getVar('sig'));
+        }
+
+        $this->renderFileNotFound();
+        $this->getApplication()->close(200);
 	}
+
+    private function getDownloadPath(): string
+    {
+        return trim((string) $this->params->get('downloadpath', ''), '/');
+    }
+
+    private function getDownloadSignature(string $group, string $folder, string $name): ?string
+    {
+        $secret = (string) $this->getApplication()->get('secret', '');
+
+        return $secret !== '' ? hash_hmac('sha256', "radicalform.download/$group/$folder/$name", $secret) : null;
+    }
 
 	/**
 	 * Check file mime type and return it
@@ -2002,43 +2004,57 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 		return $mimetype;
 	}
 
-	/**
-	 * Show image
-	 *
-	 * @param $uniq    - uniq number of the uploaded form
-	 * @param $folder  - name of the file field
-	 * @param $name    - name of the uploaded file
-	 *
-	 *
-	 * @since 1.0.0
-	 */
-	private function showImage($uniq, $folder, $name)
-	{
-		$filepath = $this->params->get('uploadstorage') . DIRECTORY_SEPARATOR . "rf-" . $uniq . DIRECTORY_SEPARATOR . $folder . DIRECTORY_SEPARATOR . $name;
-		if (file_exists($filepath))
-		{
-			$mimetype = explode('/', $this->mimetype($filepath));
+    private function serveUploadedFile(string $group, string $folder, string $name, mixed $signature): void
+    {
+        if (!preg_match('/\A' . UploadStorage::GROUP_PATTERN . '\z/', $group)
+            || !UploadStorage::isSegment($folder) || !UploadStorage::isSegment($name))
+        {
+            return;
+        }
 
-			if (($mimetype[0] == "text") || (strpos($mimetype[1], "svg")))
-			{
-				$this->renderFileNotFound();
-			}
-			else
-			{
-				header("Content-Type: " . $this->mimetype($filepath));
-				header('Expires: 0');
-				header('Cache-Control: no-cache');
-				header("Content-Length: " . (string) (filesize($filepath)));
-				echo file_get_contents($filepath);
-			}
-		}
-		else
-		{
-			$this->renderFileNotFound();
-		}
+        // Numeric groups predate signatures. Keep their already-issued links readable.
+        if (str_starts_with($group, 'v2-'))
+        {
+            $expected = $this->getDownloadSignature($group, $folder, $name);
+            if ($expected === null || !is_string($signature) || !hash_equals($expected, $signature))
+            {
+                return;
+            }
+        }
 
-		$this->getApplication()->close(200);
-	}
+        $storage = $this->getUploadStorage();
+        $directory = $storage?->directory(['rf-' . $group, $folder]);
+        $filepath = $directory !== null ? $storage->file($directory, $name) : null;
+        if ($filepath === null)
+        {
+            return;
+        }
+
+        $mime = $this->mimetype($filepath);
+        if (!$mime || str_starts_with($mime, 'text/') || str_contains($mime, 'svg'))
+        {
+            return;
+        }
+
+        $stream = @fopen($filepath, 'rb');
+        if ($stream === false)
+        {
+            return;
+        }
+
+        header('Content-Type: ' . $mime);
+        header('X-Content-Type-Options: nosniff');
+        header('Expires: 0');
+        header('Cache-Control: private, no-store');
+        $stat = fstat($stream);
+        if ($stat !== false)
+        {
+            header('Content-Length: ' . $stat['size']);
+        }
+        fpassthru($stream);
+        fclose($stream);
+        $this->getApplication()->close(200);
+    }
 
 	/**
 	 * Delete uploaded by user file
@@ -2052,22 +2068,22 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 	 */
 	public function deleteUploadedFile($catalog, $name, $uniq)
 	{
-		$name    = $this->makeSafe(basename($name));
-		$catalog = $this->makeSafe(basename($catalog));
-		$uniq    = (int) $uniq;
+        $group = $this->getUploadGroup($uniq);
+        if ($group === null || !is_string($catalog) || !is_string($name))
+        {
+            return 'ok';
+        }
 
-		if ($name === '' || $catalog === '' || $uniq <= 0)
-		{
-			return "ok";
-		}
+        try
+        {
+            $removed = $this->getUploadStorage()?->delete($group, $catalog, $name) ?? false;
+        }
+        catch (\RuntimeException)
+        {
+            $removed = false;
+        }
 
-		$filename = $this->params->get('uploadstorage') . '/rf-' . $uniq . "/" . $catalog . "/" . $name;
-		if (file_exists($filename))
-		{
-			unlink($filename);
-		}
-
-		return "ok";
+        return $removed ? 'ok' : Text::_('PLG_RADICALFORM_ERROR_UPLOAD');
 	}
 
 	/**
@@ -2126,19 +2142,7 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 
 		$source  = $input;
 		$logType = $this->getHistoryLogType($request);
-
-		$page = '';
-		if (isset($request['page']))
-		{
-			if ($request['page'] == "0")
-			{
-				$page = '';
-			}
-			else
-			{
-				$page = $request['page'] . ".";
-			}
-		}
+        $page    = RadicalFormHelper::getHistoryLogPage($r->post->get('page', $r->get->get('page', '0', 'raw'), 'raw'));
 
 		if (($get['file'] ?? null) === 'delete' && isset($input['deletefile'], $input['catalog'], $input['uniq']))
 		{
@@ -2147,13 +2151,39 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 				$this->setErrorResponse(Text::_('JINVALID_TOKEN'), [], 403);
 			}
 
-			$this->setResponse($this->deleteUploadedFile($input['catalog'], $input['deletefile'], $input['uniq']));
+            $result = $this->deleteUploadedFile($input['catalog'], $input['deletefile'], $input['uniq']);
+            if ($result !== 'ok')
+            {
+                $this->setErrorResponse($result, [], 503);
+            }
+            $this->setResponse($result);
 		}
 
 		if (isset($input['gettoken']))
 		{
 			$this->setResponse(Session::getFormToken());
 		}
+
+        if ((string) ($get['file'] ?? '') === '1')
+        {
+            if (!$this->params->get('uploadenabled', 0))
+            {
+                $this->setResponse(['error' => Text::_('PLG_RADICALFORM_UPLOAD_DISABLED')]);
+            }
+
+            if ($this->getApplication()->getSession()->isNew() || !$this->getApplication()->getSession()->checkToken())
+            {
+                $this->setResponse(['error' => Text::_('PLG_RADICALFORM_INVALID_TOKEN')]);
+            }
+
+            $uploadGroup = $this->getUploadGroup($input['uniq'] ?? null);
+            if ($uploadGroup === null)
+            {
+                $this->setResponse(['error' => Text::_('PLG_RADICALFORM_ERROR_UPLOAD')]);
+            }
+
+            $this->setResponse($this->processUploadedFiles($files, $uploadGroup));
+        }
 
 		if ($admin == 4 || $admin == 5)
 		{
@@ -2163,6 +2193,10 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 			{
 				$this->setErrorResponse(Text::_('JERROR_ALERTNOAUTHOR'), [], 403);
 			}
+            elseif ($page === null)
+            {
+                $this->setErrorResponse(Text::_('PLG_RADICALFORM_HISTORY_INVALID_ARCHIVE'), [], 400);
+            }
 			else
 			{
 				$site_offset = $this->getApplication()->get('offset'); //get offset of joomla time like asia/kolkata
@@ -2197,9 +2231,9 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 				}
 				fputcsv($output, array_map([$this, 'escapeCsvFormula'], $headers), ';', '"', '', "\r\n");
 
-				$logType  = $this->getHistoryLogType($request);
-				$log_path = str_replace('\\', '/', $this->getApplication()->get('log_path'));
-				$data     = RadicalFormHelper::getCSV($log_path . '/' . $this->getHistoryLogFileName($logType, $page), "\t");
+                $logPath = (string) $this->getApplication()->get('log_path');
+                $logFile = RadicalFormHelper::getHistoryLogPath($logPath, $logType, $page);
+                $data    = $logFile === null ? [] : RadicalFormHelper::getCSV($logFile, "\t");
 				if (count($data) > 0)
 				{
 					for ($i = 0; $i < 6; $i++)
@@ -2332,7 +2366,9 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 							{
 								if (is_array($record))
 								{
-									$record = implode(", ", $record);
+                                    $record = array_filter($record, 'is_array') === []
+                                        ? implode(', ', $record)
+                                        : json_encode($record, JSON_INVALID_UTF8_SUBSTITUTE | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 								}
 								$message   .= $delimiter . Text::_($key) . ": " . $record;
 								$delimiter = "\n";
@@ -2378,16 +2414,26 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 				}
 
 				curl_setopt($ch, CURLOPT_URL, $qv);
-				curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, 0);
-				curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
+                curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+                curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
 				curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 				curl_setopt($ch, CURLOPT_HEADER, 0);
-				$result = curl_exec($ch);
-				$output = json_decode($result, true);
-				if (curl_getinfo($ch, CURLINFO_RESPONSE_CODE) != '200')
-				{
-					$this->setResponse($output);
-				}
+                $result = curl_exec($ch);
+                $curlCode = curl_errno($ch);
+                $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+                $output = is_string($result) ? json_decode($result, true) : null;
+
+                if ($curlCode !== 0 || $status !== 200 || ($output['ok'] ?? false) !== true || !is_array($output['result'] ?? null))
+                {
+                    $apiCode = $output['error_code'] ?? null;
+                    $fallbackCode = $status >= 400 ? $status : 502;
+                    $this->setResponse([
+                        'ok' => false,
+                        'error_code' => $curlCode ?: (is_int($apiCode) ? $apiCode : $fallbackCode),
+                        'description' => Text::_('PLG_RADICALFORM_TELEGRAM_UPDATES_ERROR'),
+                    ]);
+                }
+
 				$output  = $output["result"];
 				$chatIDs = [];
 
@@ -2526,14 +2572,15 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 
 		// here we try to load current logfile
 		$site_offset = $this->getApplication()->get('offset'); //get offset of joomla time like asia/kolkata
-		$log_path    = str_replace('\\', '/', $this->getApplication()->get('log_path'));
+        $logPath        = (string) $this->getApplication()->get('log_path');
+        $currentLogFile = RadicalFormHelper::getHistoryLogPath($logPath, 'messages');
 
-		$data = RadicalFormHelper::getCSV($log_path . '/plg_system_radicalform.php', "\t");
+        $data = $currentLogFile === null ? [] : RadicalFormHelper::getCSV($currentLogFile, "\t");
 		if (count($data) > 0)
 		{
 			for ($i = 0; $i < 6; $i++)
 			{
-				if (count($data[$i]) < 4 || $data[$i][0][0] == '#')
+                if (isset($data[$i]) && (count($data[$i]) < 4 || $data[$i][0][0] == '#'))
 				{
 					unset($data[$i]);
 				}
@@ -2565,23 +2612,35 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 			{
 				$this->setErrorResponse(Text::_('JINVALID_TOKEN'), [], 403);
 			}
+            elseif ($page === null)
+            {
+                $this->setErrorResponse(Text::_('PLG_RADICALFORM_HISTORY_INVALID_ARCHIVE'), [], 400);
+            }
 			else
 			{
-				// очищаем текущий файл или удаляем, если он архивный (1-plg_system_radicalform.php и т.д.)
-				$logFile = $log_path . '/' . $this->getHistoryLogFileName($logType, $page);
-				if ($page || $logType === 'spam')
-				{
-					if (file_exists($logFile))
-					{
-						unlink($logFile);
-					}
-				}
-				else
-				{
-					unlink($this->logPath);
-					$entry = ['rfLatestNumber' => $latestNumber, 'message' => Text::_('PLG_RADICALFORM_CLEAR_HISTORY')];
-					Log::add(json_encode($entry), Log::NOTICE, $this->getHistoryLogCategory($logType));
-				}
+                if ($logType === 'spam')
+                {
+                    if (!RadicalFormHelper::deleteSpamLog($logPath, $page))
+                    {
+                        $this->setErrorResponse(Text::_('JERROR_AN_ERROR_HAS_OCCURRED'), [], 500);
+                    }
+                    $this->setResponse('ok');
+                }
+
+                $logFile = RadicalFormHelper::getHistoryLogPath($logPath, $logType, $page);
+                if ($logFile !== null)
+                {
+                    if (!unlink($logFile))
+                    {
+                        $this->setErrorResponse(Text::_('JERROR_AN_ERROR_HAS_OCCURRED'), [], 500);
+                    }
+
+                    if ($page === 0 && $logType === 'messages')
+                    {
+                        $entry = ['rfLatestNumber' => $latestNumber, 'message' => Text::_('PLG_RADICALFORM_CLEAR_HISTORY')];
+                        Log::add(json_encode($entry), Log::NOTICE, $this->getHistoryLogCategory($logType));
+                    }
+                }
 
 				$this->setResponse('ok');
 			}
@@ -2617,8 +2676,6 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 			$this->setResponse(['error' => Text::_('PLG_RADICALFORM_INVALID_TOKEN')]);
 		}
 
-		$uniq = (int) $input['uniq'];
-
 		if ($this->getApplication()->getSession()->isNew() || !$this->getApplication()->getSession()->checkToken())
 		{
 			$entry                     = $input;
@@ -2629,7 +2686,7 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 			$this->setResponse(Text::_('PLG_RADICALFORM_INVALID_TOKEN'));
 		};
 
-		if ((string) ($get['file'] ?? '') !== '1' && !$this->consumeJsPermit($jsPermit))
+        if (!$this->consumeJsPermit($jsPermit))
 		{
 			$message = $this->getJsChallengeMessage();
 			$entry                     = $input;
@@ -2672,16 +2729,7 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 			}
 		}
 
-		if (isset($get['file']) && $get['file'] == 1)
-		{
-			if (!$this->params->get('uploadenabled', 0))
-			{
-				$this->setResponse(['error' => Text::_('PLG_RADICALFORM_UPLOAD_DISABLED')]);
-			}
-
-			// Здесь нам передали файл. Что же, будем обрабатывать
-			$this->setResponse($this->processUploadedFiles($files, $uniq));
-		}
+        $uploadGroup = $this->getUploadGroup($input['uniq']);
 
 		$antiSpamReason = $this->checkAntiSpam($input);
 
@@ -2707,12 +2755,12 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 
 		if (isset($input["rfSubject"]) && (!empty($input["rfSubject"])))
 		{
-			$subject = $input["rfSubject"];
+            $subject = FormMessage::text($input["rfSubject"]);
 			unset($input["rfSubject"]);
 		}
 		else
 		{
-			$subject = $this->params->get('rfSubject');
+            $subject = FormMessage::text($this->params->get('rfSubject'));
 		}
 
 		$subjectInput = $input;
@@ -2743,80 +2791,100 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 
 		$mailer->setSubject($subject);
 
+        $storage = $this->getUploadStorage();
+        $uploadDirectory = $uploadGroup !== null ? $storage?->groupPath($uploadGroup) : null;
+        $trackUploadMutations = $uploadDirectory !== null && $this->params->get('uploadenabled', 0);
 		$params = $this->params;
-		$params->set('uploaddir', $this->params->get('uploadstorage') . '/rf-' . $uniq);
+        $params->set('uploaddir', $uploadDirectory ?? '');
 		$params->set('rfLatestNumber', $latestNumber);
 
+        $attachmentParts = [];
+        $fileDelimiter = (string) $this->params->get('delimiter', '<br />');
+
 		// формируем поле загруженных файлов
-		$url          = ((!empty($_SERVER['HTTPS'])) ? 'https' : 'http') . '://' . $_SERVER['HTTP_HOST'];
-		$downloadPath = $this->params->get('downloadpath');
-		$totalsize    = 0;
 		if ($this->params->get('uploadenabled', 0) && isset($input["needToSendFiles"]) && ($input["needToSendFiles"] == 1))
 		{
-			// просматриваем все подпапки нашей папки для выгрузки
-			$folders = Folder::folders($this->params->get('uploadstorage') . '/rf-' . $uniq);
-			foreach ($folders as $folder)
-			{
-				//прикрепляем файлы
-				$filesForAttachment = Folder::files($this->params->get('uploadstorage') . '/rf-' . $uniq . "/" . $folder, ".", false, true);
+            $folders = $uploadDirectory !== null ? @scandir($uploadDirectory) : false;
+            if ($folders === false)
+            {
+                $this->setErrorResponse(Text::_('PLG_RADICALFORM_ERROR_UPLOAD'));
+            }
 
-				foreach ($filesForAttachment as $file)
-				{
-					if (isset($input[$folder]))
-					{
-						$input[$folder] .= $this->params->get('delimiter', "<br />") . "{$url}/{$downloadPath}/{$uniq}/{$folder}/" . basename($file);
-					}
-					else
-					{
-						$input[$folder] = "{$url}/{$downloadPath}/{$uniq}/{$folder}/" . basename($file);
-					}
-					if ($this->params->get('attachfiles', 0))
-					{
-						if (($totalsize + filesize($file)) < $this->maxDirSize)
-						{
-							$totalsize = $totalsize + filesize($file);
-							$mailer->addAttachment($file);
-						}
-					}
-				}
+            $downloadPath = $this->getDownloadPath();
+            $downloadBase = rtrim(Uri::root(), '/') . '/' . $downloadPath;
+            $totalSize = 0;
 
-			}
+            foreach ($folders as $folder)
+            {
+                $directory = $storage->directory(['rf-' . $uploadGroup, $folder]);
+                if ($directory === null)
+                {
+                    continue;
+                }
+
+                foreach (@scandir($directory) ?: [] as $name)
+                {
+                    $file = $storage->file($directory, $name);
+                    if ($file === null)
+                    {
+                        continue;
+                    }
+
+                    $signature = $this->getDownloadSignature($uploadGroup, $folder, $name);
+                    if ($signature === null || $downloadPath === '')
+                    {
+                        $this->setErrorResponse(Text::_('PLG_RADICALFORM_ERROR_UPLOAD'));
+                    }
+
+                    $link = "$downloadBase/$uploadGroup/$folder/$name?sig=$signature";
+                    $attachmentParts[$folder] ??= isset($input[$folder]) ? [FormMessage::text($input[$folder])] : [];
+                    $attachmentParts[$folder][] = $link;
+                    $input[$folder] = implode($fileDelimiter, $attachmentParts[$folder]);
+
+                    if ($this->params->get('attachfiles', 0))
+                    {
+                        $size = filesize($file);
+                        if ($size !== false && $totalSize + $size < $this->maxDirSize)
+                        {
+                            $totalSize += $size;
+                            $mailer->addAttachment($file);
+                        }
+                    }
+                }
+            }
 		}
 
+        $rejection = null;
 		try
 		{
 			// вызов внешнего плагина
 			PluginHelper::importPlugin('radicalform');
 
-			$pluginResults = $this->getApplication()->triggerEvent('onBeforeSendRadicalForm', array($this->clearInput($input), &$input, $params));
+            $finishUploadMutation = $trackUploadMutations && (
+                $this->getApplication()->getDispatcher()->getListeners('onBeforeSendRadicalForm')
+                || $this->dispatcher->getListeners('onBeforeProcessRadicalForm')
+            ) ? $this->beginExternalUploadMutation($storage, $uploadGroup) : null;
+            try
+            {
+                $pluginResults = $this->getApplication()->triggerEvent('onBeforeSendRadicalForm', [$this->clearInput($input), &$input, $params]);
+                $rejection = $this->normalizeBeforeSendRejection(array_values((array) $pluginResults));
 
-			foreach ((array) $pluginResults as $pluginResult)
-			{
-				$rejection = $this->normalizeBeforeSendRejection($pluginResult);
+                if ($rejection === null)
+                {
+                    $beforeProcessEvent = new BeforeProcessRadicalFormEvent('onBeforeProcessRadicalForm', [
+                        'clearInput' => $this->clearInput($input),
+                        'input'      => &$input,
+                        'params'     => $params
+                    ]);
 
-				if ($rejection !== null)
-				{
-					$this->setErrorResponse($rejection['message'], ['fields' => $rejection['fields']]);
-				}
-			}
-
-			$beforeProcessEvent = new BeforeProcessRadicalFormEvent('onBeforeProcessRadicalForm', [
-				'clearInput' => $this->clearInput($input),
-				'input'      => &$input,
-				'params'     => $params
-			]);
-
-			$this->dispatcher->dispatch('onBeforeProcessRadicalForm', $beforeProcessEvent);
-
-			foreach ((array) ($beforeProcessEvent['result'] ?? []) as $pluginResult)
-			{
-				$rejection = $this->normalizeBeforeSendRejection($pluginResult);
-
-				if ($rejection !== null)
-				{
-					$this->setErrorResponse($rejection['message'], ['fields' => $rejection['fields']]);
-				}
-			}
+                    $this->dispatcher->dispatch('onBeforeProcessRadicalForm', $beforeProcessEvent);
+                    $rejection = $this->normalizeBeforeSendRejection(array_values((array) ($beforeProcessEvent['result'] ?? [])));
+                }
+            }
+            finally
+            {
+                $this->finishExternalUploadMutation($finishUploadMutation);
+            }
 		}
 		catch (\Throwable $e)
 		{
@@ -2832,18 +2900,23 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 			Log::add(json_encode($entry), Log::ERROR, 'plg_system_radicalform');
 		}
 
+        if ($rejection !== null)
+        {
+            $this->setErrorResponse($rejection['message'], ['fields' => $rejection['fields']]);
+        }
+
 		unset($input["uniq"]);
 		unset($input["needToSendFiles"]);
 		unset($input[Session::getFormToken()]);
-		$url        = $input["url"];
-		$resolution = $input["resolution"];
-		$ref        = $input["reffer"];
-		$pagetitle  = $input["pagetitle"];
-		$useragent  = $input["rfUserAgent"];
+        $url        = $input["url"] ?? '';
+        $resolution = $input["resolution"] ?? '';
+        $ref        = $input["reffer"] ?? '';
+        $pagetitle  = $input["pagetitle"] ?? '';
+        $useragent  = $input["rfUserAgent"] ?? '';
 
 		$rfTime     = isset($input["rf-time"]) ? $input["rf-time"] : '';
 		$rfDuration = isset($input["rf-duration"]) ? $input["rf-duration"] : '';
-		$formID     = isset($input["rfFormID"]) ? Text::_($input["rfFormID"]) : '';
+        $formID     = Text::_(FormMessage::text($input["rfFormID"] ?? ''));
 
 		if (file_exists($this->logPath))
 		{
@@ -2876,64 +2949,75 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 		$mainbody = "";
 		$subject  = StringHelper::strtoupper($subject);
 
-		if ($this->params->get('insertformid'))
-		{
-			$telegram = "<b>" . $formID . "</b><br /><br />";
-		}
-		else
-		{
-			$telegram = "<b>" . $subject . "</b><br /><br />";
-		}
+        $messageTitle = $this->params->get('insertformid') ? $formID : $subject;
+        $telegram = '<b>' . FormMessage::escape($messageTitle) . '</b><br /><br />';
+        $textOutput = FormMessage::plain($messageTitle) . " \r\n \r\n";
+        $glue = (string) $this->params->get('glue', '');
 
 		foreach ($input as $key => $record)
 		{
-			if (is_array($record))
-			{
-				if ($this->params->get('glue') == "<br />" || $this->params->get('glue') == "<br>")
-				{
-					array_unshift($record, " ");
-				}
-				$record = implode($this->params->get('glue'), $record);
+            $label = Text::_((string) $key);
+            $parts = $attachmentParts[$key] ?? null;
+            // Keep the field supplied by a hook if it changed the concatenated attachment value.
+            $isAttachmentField = $parts !== null && $record === implode($fileDelimiter, $parts);
+            $values = $isAttachmentField ? $parts : $record;
+            $separator = $isAttachmentField ? $fileDelimiter : $glue;
+            $escapedLabel = FormMessage::escape($label);
+            $emailValue = FormMessage::format($values, $separator, FormMessage::HTML, !$isAttachmentField);
 
-			}
-			if ($key == "phone")
-			{
-				$mainbody .= "<p>" . Text::_($key) . ": <strong><a href='tel://" . $record . "'>" . $record . "</a></strong></p>";
-				$telegram .= Text::_($key) . ': <b>' . $record . '</b><br />';
-			}
-			else
-			{
-				$mainbody .= "<p>" . Text::_($key) . ": <strong>" . $record . "</strong></p>";
-				$telegram .= Text::_($key) . ": <b>" . $record . "</b><br />";
-			}
+            if ($key === 'phone')
+            {
+                $phone = str_replace([' ', "\t", '(', ')', '.', '-'], '', trim(FormMessage::text($record, $glue)));
+                if (preg_match('/\A\+?[0-9]+\z/', $phone))
+                {
+                    $emailValue = '<a href="tel:' . $phone . '">' . $emailValue . '</a>';
+                }
+            }
+
+            $mainbody .= '<p>' . $escapedLabel . ': <strong>' . $emailValue . '</strong></p>';
+            $telegramValue = FormMessage::format($values, $separator, FormMessage::MESSENGER, !$isAttachmentField);
+            $telegram .= $escapedLabel . ': <b>' . $telegramValue . '</b><br />';
+            $textOutput .= FormMessage::plain($label . ': ')
+                . FormMessage::format($values, $separator, FormMessage::PLAIN, !$isAttachmentField) . " \r\n";
 		}
 
 		$header = "";
 		if ($this->params->get('insertformid'))
 		{
-			$header = "<h2>" . $formID . "<h2>";
+            $header = '<h2>' . FormMessage::escape($formID) . '</h2>';
 		}
 
 		if ($this->params->get('extendedinfo'))
 		{
-			$footer = "# <strong>" . $latestNumber . "</strong><br>";
+            $footer = '# <strong>' . FormMessage::escape(FormMessage::text($latestNumber)) . '</strong><br>';
 			if ($formID)
 			{
-				$footer .= Text::_('PLG_RADICALFORM_FORMID') . "<strong>" . Text::_($formID) . "</strong><br>";
+                $footer .= Text::_('PLG_RADICALFORM_FORMID') . '<strong>' . FormMessage::escape($formID) . '</strong><br>';
 			}
 
-			$footer .= Text::_('PLG_RADICALFORM_IP_ADDRESS') . "<a href='http://whois.domaintools.com/" . $this->getApplication()->getInput()->server->get('REMOTE_ADDR') . "'><strong>" . $this->getApplication()->getInput()->server->get('REMOTE_ADDR') . "</strong></a><br>";
-			$footer .= Text::_('PLG_RADICALFORM_URL') . $url . "<br />";
+            $ip = $this->getApplication()->getInput()->server->getString('REMOTE_ADDR', '');
+            $ipLabel = filter_var($ip, FILTER_VALIDATE_IP)
+                ? FormMessage::webLink('http://whois.domaintools.com/' . $ip, $ip)
+                : FormMessage::escape($ip);
+            $footer .= Text::_('PLG_RADICALFORM_IP_ADDRESS') . '<strong>' . $ipLabel . '</strong><br>';
+            $footer .= Text::_('PLG_RADICALFORM_URL') . FormMessage::escape(FormMessage::text($url)) . '<br />';
 			if ($ref)
 			{
-				$footer .= Text::_('PLG_RADICALFORM_REFFER') . "<a href='" . $ref . "'>" . substr($ref, 0, 64) . " </a> <br />";
+                $referrer = FormMessage::text($ref);
+                $footer .= Text::_('PLG_RADICALFORM_REFFER') . FormMessage::webLink($referrer, StringHelper::substr($referrer, 0, 64)) . '<br />';
 			};
 
-			$footer .= Text::_('PLG_RADICALFORM_PAGETITLE') . "<strong>" . htmlentities($pagetitle) . "</strong> <br />";
-			$footer .= Text::_('PLG_RADICALFORM_USERAGENT') . "<strong>" . htmlentities($useragent) . "</strong> <br />";
-			$footer .= Text::_('PLG_RADICALFORM_RESOLUTION') . "<strong>" . $resolution . "</strong> <br />";
-			$footer .= Text::_('PLG_RADICALFORM_USER_TIME') . "<strong>" . $rfTime . "</strong> <br />";
-			$footer .= Text::_('PLG_RADICALFORM_FORM_DURATION') . "<strong>" . $rfDuration . "</strong>";
+            $footerFields = [
+                'PLG_RADICALFORM_PAGETITLE' => $pagetitle,
+                'PLG_RADICALFORM_USERAGENT' => $useragent,
+                'PLG_RADICALFORM_RESOLUTION' => $resolution,
+                'PLG_RADICALFORM_USER_TIME' => $rfTime,
+                'PLG_RADICALFORM_FORM_DURATION' => $rfDuration,
+            ];
+            foreach ($footerFields as $label => $value)
+            {
+                $footer .= Text::_($label) . '<strong>' . FormMessage::escape(FormMessage::text($value)) . '</strong><br />';
+            }
 		}
 		else
 		{
@@ -2943,8 +3027,19 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 		$path = PluginHelper::getLayoutPath('system', 'radicalform');
 
 		// Render the email
+        $defaultLayout = dirname(__DIR__, 2) . '/tmpl/default.php';
+        $finishUploadMutation = $trackUploadMutations && realpath($path) !== realpath($defaultLayout)
+            ? $this->beginExternalUploadMutation($storage, $uploadGroup)
+            : null;
 		ob_start();
-		include $path;
+        try
+        {
+            include $path;
+        }
+        finally
+        {
+            $this->finishExternalUploadMutation($finishUploadMutation);
+        }
 		$body = ob_get_clean();
 
 		//execute custom code if we'll find it
@@ -2958,16 +3053,31 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 				)
 				{
 					$template = Factory::getApplication()->getTemplate();
-					$tPath    = JPATH_THEMES . '/' . $template . '/html/plg_system_radicalform/' . $customcode->layout;
+                    $templatePath = realpath(JPATH_THEMES . '/' . $template);
+                    $layoutPrefix = $templatePath . DIRECTORY_SEPARATOR . 'html' . DIRECTORY_SEPARATOR . 'plg_system_radicalform' . DIRECTORY_SEPARATOR;
+                    $layout = $customcode->layout ?? '';
+                    $tPath = $templatePath !== false && is_string($layout) && $layout !== '' && !str_contains($layout, "\0")
+                        ? realpath($layoutPrefix . $layout)
+                        : false;
 
-					if (file_exists($tPath) and is_file($tPath))
+                    if ($tPath !== false && str_starts_with($tPath, $layoutPrefix) && is_file($tPath))
 					{
+                        $finishUploadMutation = $trackUploadMutations
+                            ? $this->beginExternalUploadMutation($storage, $uploadGroup)
+                            : null;
 						$bufferLevel = ob_get_level();
 						ob_start();
 
 						try
 						{
-							include $tPath;
+                                try
+                                {
+                                    include $tPath;
+                                }
+                                finally
+                                {
+                                    $this->finishExternalUploadMutation($finishUploadMutation);
+                                }
 							$output = ob_get_clean();
 
 							if (trim($output) !== '')
@@ -3040,8 +3150,8 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 					}
 
 					curl_setopt($ch, CURLOPT_URL, "$url");
-					curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, 0);
-					curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
+                    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+                    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
 					curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 					curl_setopt($ch, CURLOPT_HEADER, 0);
 
@@ -3115,8 +3225,6 @@ class RadicalForm extends CMSPlugin implements SubscriberInterface
 			}
 		}
 
-		$textOutput = str_replace("<br />", " \r\n", $telegram);
-		$textOutput = str_replace(["<b>", "</b>"], "", $textOutput);
 		$messageLogLevel = Log::NOTICE;
 
 		if ($this->params->get('emailon'))
